@@ -31,8 +31,8 @@
 #define MAP(lval, type, void_pointer, offset_in_bytes)					\
 	do {										\
 		if(Debug_Flag) fprintf(stderr, "map " #type " at 0x%x through 0x%x\n",	\
-				offset_in_bytes, offset_in_bytes + sizeof(type) - 1);			\
-		if((offset_in_bytes + sizeof(type)) > fileLen) {				\
+				offset_in_bytes, offset_in_bytes + sizeof(type) - 1);	\
+		if((offset_in_bytes + sizeof(type)) > gInputFileSize) {			\
 			fprintf(stderr, "Cannot map - runs off end of file\n");		\
 			exit(1);							\
 		}									\
@@ -47,7 +47,7 @@
 	do {										\
 		if(Debug_Flag) fprintf(stderr, "map " #type " at 0x%x through 0x%x\n",	\
 				offset_in_bytes, offset_in_bytes + length - 1);		\
-		if((offset_in_bytes + length) > fileLen) {				\
+		if((offset_in_bytes + length) > gInputFileSize) {			\
 			fprintf(stderr, "Cannot map - runs off end of file\n");		\
 			exit(1);							\
 		}									\
@@ -63,10 +63,6 @@
 #endif
 
 // Globals
-double Freq_Value;
-char UnitsXYZ_Value[STR_LEN];
-char UnitsDia_Value[STR_LEN];
-char REzT1_Title[TITLE_LEN + 1];
 char SrcType_Value[STR_LEN];
 char LoadConfig_Value[STR_LEN];
 char LoadType_Value[STR_LEN];
@@ -410,6 +406,56 @@ typedef struct {
 	uint32_t VWnr;		// Wire number to be replaced with the segment number
 	uint32_t VSegNr[1];	// Segment number
 } VirtSegmentBlock;
+
+typedef struct {
+	TransformerBlockA		*pA;
+	TransformerBlockB		*pB;
+	TransformerBlockC		*pC;
+	TransformerBlockD		*pD;
+} TransformerBlock;
+
+typedef struct {
+	LNetBlockA			*pA;
+	LNetBlockB			*pB;
+	LNetBlockC			*pC;
+	LNetBlockD			*pD;
+	LNetBlockE			*pE;
+	LNetBlockF			*pF;
+	LNetBlockG			*pG;
+} LNetBlock;
+
+typedef struct {
+	BlkHeader			*pH;
+	union {
+		FreqSweepBlk		*pFSB;
+		WireInsBlock		*pWIB;
+		TLineLossBlock		*pTLLB;
+		TransformerBlock	*pTB;
+		LNetBlock		*pLNB;
+		VirtSegmentBlock	*pVSB;
+	} u;
+} BLOCK;
+
+typedef struct {
+	RecType1			*pRec1;
+	RecType2			**ppRec2;
+	RecType3			*pRec3;
+	RecType4			*pRec4;
+	BLOCK				**ppBlks;
+} POINTERS;
+
+typedef struct {
+	double				xyz;		// For converting endpoints
+	double				wdiam;		// For converting wire diameters
+	double				tldB;		// For converting transmission line dB
+} CONVERSION_FACTORS;
+
+void			*gIMap;				// Pointer to mmapped input file.
+off_t			gInputFileSize;			// Size of input file in bytes.
+int			gStartVarLenBlocks;		// Offset to the first varlen block.
+POINTERS		gPointers;			// Pointers to all records and blocks.
+CONVERSION_FACTORS	gConvert;			// Conversion factors
+double			gFrequency;			// Frequency in MHz
 
 // Copy a string, but always leave room for a null terminator, and add
 // one if needed.
@@ -969,13 +1015,207 @@ dumpVirtSegmentBlock(BlkHeader *pH, VirtSegmentBlock *p)
 	fprintf(stderr, "\n");
 }
 
-void
-Read_EZNEC(char *FileToOpen, char *OutputFile)
+int
+mapInput(char *pName)
 {
+	int		rv;
+	int		fd;
+	struct stat	sb;
+
+	// Get the file size, as we need that for mmap();
+	errno = 0;
+	if((rv = stat(pName, &sb)) < 0) {
+		fprintf(stderr, "Cannot stat %s, got %d, errno %d\n", pName, rv, errno);
+		return -1;
+	}
+	gInputFileSize = sb.st_size;
+	if(Debug_Flag) fprintf(stderr, "length of file 0x%x\n", gInputFileSize);
+
+	// Open the EZ file.  We open it read/write, because we need the
+	// ability to modify mmapped variables.  But we don't actually want
+	// to affect the file, so we will use a private mapping.
+	errno = 0;
+	if((fd = open(pName, O_RDWR)) < 0) {
+		fprintf(stderr, "Cannot open %s, got %d, errno %d\n", pName, fd, errno);
+		return -1;
+	}
+
+	// Map it into our process space.  Allow reading and writing, but use
+	// a private (copy-on-write) map so we don't change the underlying
+	// file.
+	errno = 0;
+	if((gIMap = mmap(NULL, gInputFileSize, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)) == MAP_FAILED) {
+		close(fd);
+		fprintf(stderr, "Cannot mmap %s, got %d, errno %d\n", pName, fd, errno);
+		return -1;
+	}
+
+	// We don't need the file descriptor once the map has been made.
+	close(fd);
+	return 0;
+}
+
+int
+mapRecType1()
+{
+	// Map the global header (RecType1 block).  It starts at byte 0.
+	MAP(gPointers.pRec1, RecType1, gIMap, 0);
+
+	if(gPointers.pRec1->MaxMWSL == 0) {
+		// OldMaxMWSL is 16 bit, and has been replaced by MaxMWSL
+		// which is 32 bit.  Older programs may not have filled
+		// MaxMWSL in, I suppose.
+		//
+		// But I have no way to test that.
+		gPointers.pRec1->MaxMWSL = gPointers.pRec1->OldMaxMWSL;
+	}
+
+	if(gPointers.pRec1->NW == 0) {
+		// OldNW is 16 bit, and has been replaced by NW
+		// which is 32 bit.  Older programs may not have filled
+		// NW in, I suppose.
+		//
+		// But I have no way to test that.
+		gPointers.pRec1->NW = gPointers.pRec1->OldNW;
+	}
+
+	// Very rudimentary sanity check.
+	if(gPointers.pRec1->Ck != 1304) {
+		fprintf(stderr, "pRec1->Ck != 1304\n");
+		return -1;
+	}
+
+	// Lots of things depend on the frequency, so set a global for
+	// convenience.
+	gFrequency = gPointers.pRec1->FMHz;
+
+	dumpRecType1(gPointers.pRec1);
+	return 0;
+}
+
+int
+mapRecType2()
+{
+	int			i;
+	int			position;
+
+	// There is at least one RecType2, but probably a lot more.
+	// We need an array of pointers for them.
+	if((gPointers.ppRec2 = malloc(gPointers.pRec1->MaxMWSL * sizeof(RecType2 *))) == NULL) {
+		fprintf(stderr, "No space to map RecType2 records\n");
+		return -1;
+	}
+
+	// Map the RecType2 record(s).  They start immediately after the
+	// global record.
+	position = PRIMARY_BS;
+	for(i = 0; i < gPointers.pRec1->MaxMWSL; i++) {
+		MAP(gPointers.ppRec2[i], RecType2, gIMap, position);
+
+		dumpRecType2(gPointers.ppRec2[i]);
+
+		// Move to the next block.
+		position += PRIMARY_BS;
+	}
+
+	return 0;
+}
+
+void
+printCMCE(FILE *pOut)
+{
+	char buf[TITLE_LEN + 1];
+	char *p;
+	char *q;
+	int i;
+
+	// String has a fixed length and no null terminator.
+	memcpy(buf, gPointers.pRec1->Title, TITLE_LEN);
+	buf[TITLE_LEN] = 0;
+
+	// Trim leading spaces, if any.
+	for(p = buf; *p != 0; p++) {
+		if(*p != ' ') {
+			break;
+		}
+	}
+
+	// Trim trailing spaces, if any.
+	for(q = p + strlen(p); q != p; q--) {
+		if(*q != 0 && *q != ' ') {
+			break;
+		}
+		*q = 0;
+	}
+
+	fprintf(pOut, "CM %s\n", p);
+	fprintf(pOut, "CE\n");
+}
+
+void
+setConversionFactors()
+{
+	// Apparently, there are some files where the units are not set
+	// properly.  In that case, we force "Wavelength".
+	if(gPointers.pRec1->Units == 0) {
+		gPointers.pRec1->Units = 'W';
+	}
+	if(gPointers.pRec1->DiaUnits == 0) {
+		gPointers.pRec1->DiaUnits = 'W';
+	}
+
+	switch(gPointers.pRec1->Units) {
+		case 'M':	// Use mm for wire diameter, meters for everything else 
+			gConvert.xyz = 1;
+			gConvert.wdiam = 0.001;
+			gConvert.tldB = 1;
+			break;
+		case 'L':	// Use meters for TL Loss, mm for everything else
+			gConvert.xyz = 0.001;
+			gConvert.wdiam = 0.001;
+			gConvert.tldB = 1;
+			break;
+		case 'F':	// Use inches for wire diameter, feet for everything else
+			gConvert.xyz = 0.3048;
+			gConvert.wdiam = 0.0254;
+			gConvert.tldB = 0.3048;
+			break;
+		case 'I':	// Use feet for TL Loss, inches for everything else
+			gConvert.xyz = 0.0254;
+			gConvert.wdiam = 0.0254;
+			gConvert.tldB = 0.3048;
+			break;
+		case 'W':	// Wavelength has to be converted based on frequency
+			gConvert.xyz = 299.792458 / gFrequency;	// Use meters for wire ends
+
+			switch(gPointers.pRec1->DiaUnits) {
+				case 'L':	// Use mm for wire diameter
+					gConvert.wdiam = 0.001;
+					break;
+				case 'I':	// Use inches for wire diameter
+					gConvert.wdiam = 0.0254;
+					break;
+				case 'W':	// Use wavelength for wire diameter
+					gConvert.wdiam = gConvert.xyz;
+					break;
+			}
+
+			gConvert.tldB = 0.3048; // Use feet for TL Loss
+	}
+}
+
+void
+pass1()
+{
+}
+
+void
+Read_EZNEC(char *InputFile, char *OutputFile)
+{
+	int			i;
 	FILE			*pOut;
 
 	// The following records are all 170 bytes long.
-	RecType1		*pRec1;		// Globals
 	RecType2		*pRec2;		// Wires, sources, loads, etc
 	RecType3		*pRec3;		// Near field data
 	//RecType4		*pRec4;		// Reserved block
@@ -1002,7 +1242,6 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 
 	uint32_t currentPosition;
        	uint32_t BytePosStartBlocks;
-	double XYZConv, DiaConv, TLdBConv;
 	char *myUnitsXYZ[] = { "m", "mm", "ft", "in", "wl" };
 	char *myUnitsDia[] = { "mm", "mm", "in", "in" };
 	char *mySType[] = { "V", "I", "SV", "SI" };
@@ -1021,14 +1260,12 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	int optMedia2Radial;
 	uint32_t cboGchar2LI;
 
-	int fd;
 	int WireCnt;
 	int SrcOff;
 	int MaxedOutSLT;
 	int rv;
 	int LdOff;
 	int TLOff;
-	int fileLen;
 	struct stat sb;
 	int XfmrOff;
 	int LnetOff;
@@ -1037,31 +1274,6 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	uint32_t VCnt;
 	uint32_t Vindex;
 	int RowOff;
-
-	void *p;
-
-	if(Debug_Flag) {
-		fprintf(stderr, "sizeof RecType1 %d\n", sizeof(RecType1));
-		fprintf(stderr, "sizeof RecType2 %d\n", sizeof(RecType2));
-		fprintf(stderr, "sizeof RecType3 %d\n", sizeof(RecType3));
-		fprintf(stderr, "sizeof RecType4 %d\n", sizeof(RecType4));
-		fprintf(stderr, "sizeof FreqSweepBlk %d\n", sizeof(FreqSweepBlk));
-
-		fprintf(stderr, "sizeof BlkHeader %d\n", sizeof(BlkHeader));
-		fprintf(stderr, "sizeof WireInsBlock %d\n", sizeof(WireInsBlock));
-		fprintf(stderr, "sizeof TLineLossBlock %d\n", sizeof(TLineLossBlock));
-		fprintf(stderr, "sizeof TransformerBlockA %d\n", sizeof(TransformerBlockA));
-		fprintf(stderr, "sizeof TransformerBlockB %d\n", sizeof(TransformerBlockB));
-		fprintf(stderr, "sizeof TransformerBlockC %d\n", sizeof(TransformerBlockC));
-		fprintf(stderr, "sizeof TransformerBlockD %d\n", sizeof(TransformerBlockD));
-		fprintf(stderr, "sizeof LNetBlockB %d\n", sizeof(LNetBlockB));
-		fprintf(stderr, "sizeof LNetBlockC %d\n", sizeof(LNetBlockC));
-		fprintf(stderr, "sizeof LNetBlockD %d\n", sizeof(LNetBlockD));
-		fprintf(stderr, "sizeof LNetBlockE %d\n", sizeof(LNetBlockE));
-		fprintf(stderr, "sizeof LNetBlockF %d\n", sizeof(LNetBlockF));
-		fprintf(stderr, "sizeof LNetBlockG %d\n", sizeof(LNetBlockG));
-		fprintf(stderr, "sizeof VirtSegmentBlock %d\n", sizeof(VirtSegmentBlock));
-	}
 
 	// Create an output file, if requested.  Otherwise we will just use stdout.
 	if(OutputFile) {
@@ -1074,196 +1286,59 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		pOut = stdout;
 	}
 
-	// Get the file size, as we need that for mmap();
-	errno = 0;
-	if((rv = stat(FileToOpen, &sb)) < 0) {
-		fprintf(stderr, "Cannot stat %s, got %d, errno %d\n", FileToOpen, rv, errno);
-		exit(1);
-	}
-	fileLen = sb.st_size;
-	if(Debug_Flag) fprintf(stderr, "length of file 0x%x\n", fileLen);
-
-	// Open the EZ file.  We open it read/write, because we need the
-	// ability to modify mmapped variables.  But we don't actually want
-	// to affect the file, so we will use a private mapping.
-	errno = 0;
-	if((fd = open(FileToOpen, O_RDWR)) < 0) {
-		fprintf(stderr, "Cannot open %s, got %d, errno %d\n", FileToOpen, fd, errno);
+	// Map the input file.
+	if(mapInput(InputFile) < 0) {
+		// Error messages already printed via mapInput.
 		exit(1);
 	}
 
-	// Map it into our process space.  Allow reading and writing, but use
-	// a private (copy-on-write) map so we don't change the underlying
-	// file.
-	errno = 0;
-	if((p = mmap(NULL, fileLen, PROT_READ | PROT_WRITE, MAP_PRIVATE, fd, 0)) == MAP_FAILED) {
-		fprintf(stderr, "Cannot mmap %s, got %d, errno %d\n", FileToOpen, fd, errno);
+	// Map the globals.
+	if(mapRecType1() < 0) {
+		// Error messages already printed via mapInput.
 		exit(1);
 	}
+	
+	// Print the CM-CE header.
+	printCMCE(pOut);
 
-	// Don't need the file descriptor once the map has been made.
-	close(fd);
+	// Set up the conversion factors.  All values in the file use meters,
+	// but we want to be able to convert to the user's preferred units.
+	setConversionFactors();
 
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Global Header                                                            @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
-
-	// Map the global header (RecType1 block).
-	currentPosition = 0;
-	MAP(pRec1, RecType1, p, currentPosition);
-
-	if(pRec1->MaxMWSL == 0) {
-		// OldMaxMWSL is 16 bit, and has been replaced by MaxMWSL
-		// which is 32 bit.  Older programs may not have filled
-		// MaxMWSL in, I suppose.
-		//
-		// But I have no way to test that.
-		pRec1->MaxMWSL = pRec1->OldMaxMWSL;
-	}
-
-	if(pRec1->NW == 0) {
-		// OldNW is 16 bit, and has been replaced by NW
-		// which is 32 bit.  Older programs may not have filled
-		// NW in, I suppose.
-		//
-		// But I have no way to test that.
-		pRec1->NW = pRec1->OldNW;
-	}
-
-	dumpRecType1(pRec1);
-
-	if(pRec1->Ck != 1304) {
-		fprintf(stderr, "pRec1->Ck != 1304\n");
-		exit(1);
-	}
-
-	// String has a fixed length and no null terminator.
-	memcpy(REzT1_Title, pRec1->Title, TITLE_LEN);
-	REzT1_Title[TITLE_LEN] = 0;
-
-	fprintf(pOut, "CM %s\n", REzT1_Title);
-	fprintf(pOut, "CE\n");
-
-	Freq_Value = pRec1->FMHz;
-	if(Debug_Flag) fprintf(stderr, "Frequency = %f MHz\n", Freq_Value);
-
-	if(pRec1->Units == 0) {
-		pRec1->Units = 'W';
-	}
-
-	switch(pRec1->Units) {
-		case 'M': strlcpy(UnitsXYZ_Value, myUnitsXYZ[0], STR_LEN); break;
-		case 'L': strlcpy(UnitsXYZ_Value, myUnitsXYZ[1], STR_LEN); break;
-		case 'F': strlcpy(UnitsXYZ_Value, myUnitsXYZ[2], STR_LEN); break;
-		case 'I': strlcpy(UnitsXYZ_Value, myUnitsXYZ[3], STR_LEN); break;
-		case 'W': strlcpy(UnitsXYZ_Value, myUnitsXYZ[4], STR_LEN); break;
-		default:  strlcpy(UnitsXYZ_Value, "?", STR_LEN); break;
-	}
-	if(Debug_Flag) fprintf(stderr, "UnitsXYZ = %s\n", UnitsXYZ_Value);
-
-	if(pRec1->Units != 'W') {
-		switch(pRec1->Units) {
-			case 'M': strlcpy(UnitsDia_Value, myUnitsDia[0], STR_LEN); break;
-			case 'L': strlcpy(UnitsDia_Value, myUnitsDia[1], STR_LEN); break;
-			case 'F': strlcpy(UnitsDia_Value, myUnitsDia[2], STR_LEN); break;
-			case 'I': strlcpy(UnitsDia_Value, myUnitsDia[3], STR_LEN); break;
-			default:  strlcpy(UnitsDia_Value, "?", STR_LEN);
-		}
-	} else {
-		if(pRec1->DiaUnits == 0) {
-			pRec1->DiaUnits = 'W';
-		}
-		switch(pRec1->DiaUnits) {
-			case 'M': strlcpy(UnitsDia_Value, myUnitsXYZ[0], STR_LEN); break;
-			case 'L': strlcpy(UnitsDia_Value, myUnitsXYZ[1], STR_LEN); break;
-			case 'F': strlcpy(UnitsDia_Value, myUnitsXYZ[2], STR_LEN); break;
-			case 'I': strlcpy(UnitsDia_Value, myUnitsXYZ[3], STR_LEN); break;
-			case 'W': strlcpy(UnitsDia_Value, myUnitsXYZ[4], STR_LEN); break;
-			default:  strlcpy(UnitsDia_Value, "?", STR_LEN); break;
-		}
-	}
-	if(Debug_Flag) fprintf(stderr, "UnitsDia = %s\n", UnitsDia_Value);
-
-	switch(pRec1->Units) {
-		case 'M':
-			XYZConv = 1;
-			DiaConv = 0.001;
-			TLdBConv = 1;
-			break;
-		case 'L':
-			XYZConv = 0.001;
-			DiaConv = 0.001;
-			TLdBConv = 1;
-			break;
-		case 'F':
-			XYZConv = 0.3048;
-			DiaConv = 0.0254;
-			TLdBConv = 0.3048;
-			break;
-		case 'I':
-			XYZConv = 0.0254;
-			DiaConv = 0.0254;
-			TLdBConv = 0.3048;
-			break;
-		case 'W':
-			switch(pRec1->DiaUnits) {
-				case 'L':
-					XYZConv = 299.7924 / Freq_Value;
-					DiaConv = 0.001;
-					break;
-				case 'I':
-					XYZConv = 299.7924 / Freq_Value;
-					DiaConv = 0.0254;
-					break;
-				case 'W':
-					XYZConv = 299.7924 / Freq_Value;
-					DiaConv = XYZConv;
-					break;
-			}
-
-			TLdBConv = 0.3048;
-	}
-
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Find Wires                                                               @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
+	// Map all the RecType2 blocks.
+	mapRecType2();
 
 	// Start at the first RecType2 block, and dump all the wires.  
-	if(Debug_Flag) fprintf(stderr, "Number of Wires = %d\n", pRec1->NW);
-	currentPosition = PRIMARY_BS;
-	for(WireCnt = 1; WireCnt <= pRec1->NW; WireCnt++) {
+	//
+	// We might want to handle virtual wires by finding #18 block first.
+	for(i = 0; i < gPointers.pRec1->NW; i++) {
+		RecType2 *pRec2;
 		double v;
 
-		MAP(pRec2, RecType2, p, currentPosition);
+		pRec2 = gPointers.ppRec2[i];
 
-		dumpRecType2(pRec2);
+		fprintf(pOut, "GW %3d %3d ", i + 1, pRec2->WSegs);
 
-		fprintf(pOut, "GW %3d %3d ", WireCnt, pRec2->WSegs);
-
-		v = pRec2->WEnd1_X / XYZConv;
+		v = pRec2->WEnd1_X / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd1_X);
 
-		v = pRec2->WEnd1_Y / XYZConv;
+		v = pRec2->WEnd1_Y / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd1_Y);
 
-		v = pRec2->WEnd1_Z / XYZConv;
+		v = pRec2->WEnd1_Z / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd1_Z);
 
-		v = pRec2->WEnd2_X / XYZConv;
+		v = pRec2->WEnd2_X / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd2_X);
 
-		v = pRec2->WEnd2_Y / XYZConv;
+		v = pRec2->WEnd2_Y / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd2_Y);
 
-		v = pRec2->WEnd2_Z / XYZConv;
+		v = pRec2->WEnd2_Z / gConvert.xyz;
 		fprintf(pOut, "%8g ", pRec2->WEnd2_Z);
 
 		if(pRec2->WDiaGa == (uint16_t)-1) {
-			v = pRec2->WireDia / DiaConv;
+			v = pRec2->WireDia / gConvert.wdiam;
 			fprintf(pOut, "%8g\n", pRec2->WireDia / 2);
 		} else {
 			double diameterInches = 0.005 * pow(92.0, ((36.0 - pRec2->WDiaGa) / 39.0));
@@ -1284,13 +1359,13 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "\n");
 
 	// Start at the first RecType2 block, and dump all the sources.  
-	if(Debug_Flag) fprintf(stderr, "Number of Sources = %d\n", pRec1->NSrc);
+	if(Debug_Flag) fprintf(stderr, "Number of Sources = %d\n", gPointers.pRec1->NSrc);
 	currentPosition = PRIMARY_BS;
-	for(SrcOff = 1; SrcOff <= pRec1->NSrc; SrcOff++) {
+	for(SrcOff = 1; SrcOff <= gPointers.pRec1->NSrc; SrcOff++) {
 		int i;
 		double v;
 
-		MAP(pRec2, RecType2, p, currentPosition);
+		MAP(pRec2, RecType2, gIMap, currentPosition);
 
 		dumpRecType2(pRec2);
 
@@ -1328,9 +1403,9 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
-	if(Debug_Flag) fprintf(stderr, "Number of loads = %d\n", pRec1->NL);
-	if((pRec1->NL > 0)) {
-		switch(pRec1->LType) {
+	if(Debug_Flag) fprintf(stderr, "Number of loads = %d\n", gPointers.pRec1->NL);
+	if((gPointers.pRec1->NL > 0)) {
+		switch(gPointers.pRec1->LType) {
 			case 'Z':
 				optRjX = true;
 				laplaceLoad = false;
@@ -1351,8 +1426,8 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			double v;
 
 			currentPosition = PRIMARY_BS;
-			for(LdOff = 1; LdOff <= pRec1->NL; LdOff++) {
-				MAP(pRec2, RecType2, p, currentPosition);
+			for(LdOff = 1; LdOff <= gPointers.pRec1->NL; LdOff++) {
+				MAP(pRec2, RecType2, gIMap, currentPosition);
 
 				dumpRecType2(pRec2);
 
@@ -1362,7 +1437,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 				v = pRec2->LWPct;
 				if(Debug_Flag) fprintf(stderr, "Percent from wire start = %10.6f\n", v);
 
-				if(pRec1->LType == 'Z') {
+				if(gPointers.pRec1->LType == 'Z') {
 					v = pRec2->LZ_R;
 					if(Debug_Flag) fprintf(stderr, "Load resistance = %10.6f, ", v);
 
@@ -1411,11 +1486,11 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
-	if(Debug_Flag) fprintf(stderr, "Number of transmission lines = %d\n", pRec1->NT);
-	if(pRec1->NT > 0) {
+	if(Debug_Flag) fprintf(stderr, "Number of transmission lines = %d\n", gPointers.pRec1->NT);
+	if(gPointers.pRec1->NT > 0) {
 		currentPosition = PRIMARY_BS;
-		for(TLOff = 1; TLOff <= pRec1->NT; TLOff++) {
-			MAP(pRec2, RecType2, p, currentPosition);
+		for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
+			MAP(pRec2, RecType2, gIMap, currentPosition);
 
 			dumpRecType2(pRec2);
 
@@ -1436,7 +1511,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			}
 
 			if(pRec2->TLLen > 0) {
-				if(Debug_Flag) fprintf(stderr, "TL Length %10.6f, ", pRec2->TLLen / XYZConv);
+				if(Debug_Flag) fprintf(stderr, "TL Length %10.6f, ", pRec2->TLLen / gConvert.xyz);
 			} else if(pRec2->TLLen < 0) {
 				if(Debug_Flag) fprintf(stderr, "TL Length %10.6f d, ", -pRec2->TLLen);
 			} else {
@@ -1462,7 +1537,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
-	switch(pRec1->Gtype) {
+	switch(gPointers.pRec1->Gtype) {
 		case 'F':
 			cboGtypeLI = 0;
 			break;
@@ -1470,7 +1545,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			cboGtypeLI = 1;
 			break;
 		case 'R':
-			switch(pRec1->GAnal) {
+			switch(gPointers.pRec1->GAnal) {
 				case 'H':
 				case 'F':
 					cboGtypeLI = 2;
@@ -1483,20 +1558,20 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	// I think this is trying to find the wire type.  For now, just print the
 	// raw values.
 	//
-	// cboWireLossLI = wsf.Match(wsf.Round(pRec1->WRho, 10), .[WireRhos], 0) - 1
+	// cboWireLossLI = wsf.Match(wsf.Round(gPointers.pRec1->WRho, 10), .[WireRhos], 0) - 1
 	// If Err.Number > 0 Then cboWireLossLI = 5
-	// .Range("N6").Value = pRec1->WRho
-	// .Range("O6").Value = pRec1->WMu
+	// .Range("N6").Value = gPointers.pRec1->WRho
+	// .Range("O6").Value = gPointers.pRec1->WMu
 	// Rho should be resistivity and Mu should be permeability.  But I'd
 	// expect these to be on a load basis rather than global.
-	if(Debug_Flag) fprintf(stderr, "WRho %10.6f, ", pRec1->WRho);
-	if(Debug_Flag) fprintf(stderr, "WMu %10.6f\n", pRec1->WMu);
+	if(Debug_Flag) fprintf(stderr, "WRho %10.6f, ", gPointers.pRec1->WRho);
+	if(Debug_Flag) fprintf(stderr, "WMu %10.6f\n", gPointers.pRec1->WMu);
 
-	if(pRec1->Gtype == 'R') {
+	if(gPointers.pRec1->Gtype == 'R') {
 
-		// Skip over the pRec1 block so we can look at the first pRec2 block.
+		// Skip over the gPointers.pRec1 block so we can look at the first pRec2 block.
 		currentPosition = PRIMARY_BS;
-		MAP(pRec2, RecType2, p, currentPosition);
+		MAP(pRec2, RecType2, gIMap, currentPosition);
 
 		dumpRecType2(pRec2);
 
@@ -1507,13 +1582,13 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "MSigma %10.6f, ", pRec2->MSigma);
 		if(Debug_Flag) fprintf(stderr, "MEps %10.6f\n", pRec2->MEps);
 
-		if(pRec1->NM == 2) {
+		if(gPointers.pRec1->NM == 2) {
 			chkMedia2 = true;
 
-			// Skip over the pRec1 block and the first pRec2 block so we
+			// Skip over the gPointers.pRec1 block and the first pRec2 block so we
 			// can look at the second pRec2 block.
 			currentPosition = PRIMARY_BS + PRIMARY_BS;
-			MAP(pRec2, RecType2, p, currentPosition);
+			MAP(pRec2, RecType2, gIMap, currentPosition);
 
 			dumpRecType2(pRec2);
 
@@ -1521,38 +1596,38 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			// If Err.Number > 0 Then
 			// cboGchar2LI = 4
 			// End If
-			// .Range("Q5").Value = RoundSig(CDbl(CStr(pRec2->MHt)) / XYZConv, 7)
-			// .Range("R5").Value = RoundSig(CDbl(CStr(pRec2->MCoord)) / XYZConv, 7)
+			// .Range("Q5").Value = RoundSig(CDbl(CStr(pRec2->MHt)) / gConvert.xyz, 7)
+			// .Range("R5").Value = RoundSig(CDbl(CStr(pRec2->MCoord)) / gConvert.xyz, 7)
 			if(Debug_Flag) fprintf(stderr, "MHt %10.6f, ", pRec2->MHt);
 			if(Debug_Flag) fprintf(stderr, "MCoord %10.6f\n", pRec2->MCoord);
-			if(pRec1->BdryType == 'R') {
+			if(gPointers.pRec1->BdryType == 'R') {
 			       	optMedia2Radial = true;
 			}
 		}
 	}
 
-	if(pRec1->PType == '3') {
+	if(gPointers.pRec1->PType == '3') {
 		cboPtypeLI = 1;
 		snprintf(txtPang, STR_LEN, "%f", 0.0);
-	} else if(pRec1->PType == 'A' || pRec1->OldPType == 'A') {
+	} else if(gPointers.pRec1->PType == 'A' || gPointers.pRec1->OldPType == 'A') {
 		cboPtypeLI = 0;
-		snprintf(txtPang, STR_LEN, "%f", pRec1->Pangle);
-	} else if(pRec1->PType == 'E' || pRec1->OldPType == 'E') {
+		snprintf(txtPang, STR_LEN, "%f", gPointers.pRec1->Pangle);
+	} else if(gPointers.pRec1->PType == 'E' || gPointers.pRec1->OldPType == 'E') {
 		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%f", pRec1->Pangle);
+		snprintf(txtPang, STR_LEN, "%f", gPointers.pRec1->Pangle);
 	} else {
 		cboPtypeLI = 1;
 		snprintf(txtPang, STR_LEN, "%f", 0.0);
 	}
 	if(Debug_Flag) fprintf(stderr, "txtPang %s, ", txtPang);
 
-	if(pRec1->PStep == 5) {
+	if(gPointers.pRec1->PStep == 5) {
 		cboPstepLI = 0;
-	} else if(pRec1->PStep == 1) {
+	} else if(gPointers.pRec1->PStep == 1) {
 		cboPstepLI = 1;
-	} else if(pRec1->PStep == 0.5) {
+	} else if(gPointers.pRec1->PStep == 0.5) {
 		cboPstepLI = 2;
-	} else if(pRec1->PStep = 0.1) {
+	} else if(gPointers.pRec1->PStep = 0.1) {
 		cboPstepLI = 3;
 	} else {
 		cboPstepLI = 1;
@@ -1565,11 +1640,11 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
-	// There is one RecType1, followed by pRec1->MaxMWSL RecType2's,
+	// There is one RecType1, followed by gPointers.pRec1->MaxMWSL RecType2's,
 	// then we get to a single RecType3.  In other words, RecType3
 	// comes immediately after the last RecType2 record.
-	BytePosStartBlocks = PRIMARY_BS + (pRec1->MaxMWSL * PRIMARY_BS);
-	MAP(pRec3, RecType3, p, currentPosition);
+	BytePosStartBlocks = PRIMARY_BS + (gPointers.pRec1->MaxMWSL * PRIMARY_BS);
+	MAP(pRec3, RecType3, gIMap, currentPosition);
 	dumpRecType3(pRec3);
 
 	// There is one RecType4 immediately after the RecType3.  However,
@@ -1581,7 +1656,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
-	// There is always a single pRec1 - that's the first PRIMARY_BS in the
+	// There is always a single gPointers.pRec1 - that's the first PRIMARY_BS in the
 	// BytePosStartBlocks variable.
 	//
 	// Then there are a bunch of pRec2, also PRIMARY_BS bytes each.  NW,
@@ -1590,9 +1665,9 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	//
 	// Then comes pRec3 (second to last PRIMARY_BS), and finally comes
 	// pRec4 (the last PRIMARY_BS).
-	BytePosStartBlocks = PRIMARY_BS + (pRec1->MaxMWSL * PRIMARY_BS) + PRIMARY_BS + PRIMARY_BS;
+	BytePosStartBlocks = PRIMARY_BS + (gPointers.pRec1->MaxMWSL * PRIMARY_BS) + PRIMARY_BS + PRIMARY_BS;
 
-	if(BytePosStartBlocks >= fileLen) {
+	if(BytePosStartBlocks >= gInputFileSize) {
 		// There are no Var Blocks.
 		if(Debug_Flag) fprintf(stderr, "No Var Blocks\n");
 		return;
@@ -1606,7 +1681,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "\n");
 
 	currentPosition = BytePosStartBlocks;
-	MAP(pHdr, BlkHeader, p, currentPosition);
+	MAP(pHdr, BlkHeader, gIMap, currentPosition);
 
 	dumpBlkHeader(pHdr);
 
@@ -1617,7 +1692,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		if(Debug_Flag) fprintf(stderr, "\n");
 
-		VMAP(pBlk11, FreqSweepBlk, p, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
+		VMAP(pBlk11, FreqSweepBlk, gIMap, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
 
 		dumpFreqSweepBlock(pHdr, pBlk11);
 
@@ -1625,7 +1700,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			// Step size is zero, so there is only a single frequency.
 			// We cannot use pBlk11->FStart because it is likely zero
 			// also.
-			if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", Freq_Value);
+			if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", gFrequency);
 		} else {
 			double Freq;
 			int i;
@@ -1646,7 +1721,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		// There is no type 11 block, and this is the only place it
 		// could be.  Assume we are just looking at a single frequency.
 		// FIXME - perhaps it could be elsewhere.  Who says these are in order???
-		if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", Freq_Value);
+		if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", gFrequency);
 	}
 
 	if(Debug_Flag) fprintf(stderr, "\n");
@@ -1656,8 +1731,8 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "\n");
 
 	currentPosition = BytePosStartBlocks;
-	while(currentPosition < fileLen) {
-		MAP(pHdr, BlkHeader, p, currentPosition);
+	while(currentPosition < gInputFileSize) {
+		MAP(pHdr, BlkHeader, gIMap, currentPosition);
 
 		dumpBlkHeader(pHdr);
 
@@ -1670,13 +1745,13 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 			if(Debug_Flag) fprintf(stderr, "\n");
 
-			VMAP(pBlk12, WireInsBlock, p, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
+			VMAP(pBlk12, WireInsBlock, gIMap, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
 
 			dumpWireInsBlock(pHdr, pBlk12);
 
 			for(i = 0; i < pBlk12->NumWires; i++) {
 				if(Debug_Flag) fprintf(stderr, "Dielectric C %10.6f, ", pBlk12->Wires[i].DielC);
-				if(Debug_Flag) fprintf(stderr, "Thickness %10.6f\n", pBlk12->Wires[i].Thk / DiaConv);
+				if(Debug_Flag) fprintf(stderr, "Thickness %10.6f\n", pBlk12->Wires[i].Thk / gConvert.wdiam);
 				if(Debug_Flag) fprintf(stderr, "Loss Tangent %10.6f\n", pBlk12->Wires[i].LTan);
 			}
 			break;
@@ -1691,7 +1766,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		currentPosition += pHdr->BlockLen;
 	}
 
-	if(pRec1->NT > 0) {
+	if(gPointers.pRec1->NT > 0) {
 		if(Debug_Flag) fprintf(stderr, "\n");
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		if(Debug_Flag) fprintf(stderr, "@@ Want Transmission Line Loss Parameters                                   @@\n");
@@ -1699,11 +1774,11 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "\n");
 
 		currentPosition = BytePosStartBlocks;
-		while(currentPosition < fileLen) {
+		while(currentPosition < gInputFileSize) {
 			uint32_t start;
 			uint32_t remain;
 
-			MAP(pHdr, BlkHeader, p, currentPosition);
+			MAP(pHdr, BlkHeader, gIMap, currentPosition);
 			start = currentPosition + sizeof(BlkHeader);
 			remain = pHdr->BlockLen - sizeof(BlkHeader);
 
@@ -1712,8 +1787,8 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 			// The type 14 block consists of a pair of variable length arrays.
 			// Thus, a structure isn't really appropriate.
 			//
-			// There are pRec1->NT floats representing Loss, followed
-			// by pRec1->NT floats representing LossFreq.
+			// There are gPointers.pRec1->NT floats representing Loss, followed
+			// by gPointers.pRec1->NT floats representing LossFreq.
 			if(pHdr->BlockType == 14) {
 				int i;
 				float *pFloat;
@@ -1725,20 +1800,20 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 				if(Debug_Flag) fprintf(stderr, "\n");
 
 				// Map the block.
-				VMAP(pBlk14, TLineLossBlock, p, start, remain);
+				VMAP(pBlk14, TLineLossBlock, gIMap, start, remain);
 
 				dumpTLineLossBlock(pHdr, pBlk14);
 
 				pFloat = &pBlk14->Loss[0];
-				for(TLOff = 1; TLOff <= pRec1->NT; TLOff++) {
-					if(Debug_Flag) fprintf(stderr, "Loss %10.6f\n", *pFloat++ * TLdBConv * 100);
+				for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
+					if(Debug_Flag) fprintf(stderr, "Loss %10.6f\n", *pFloat++ * gConvert.tldB * 100);
 				}
 
-				for(TLOff = 1; TLOff <= pRec1->NT; TLOff++) {
+				for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
 					if(Debug_Flag) fprintf(stderr, "LossFreq %10.6f\n", *pFloat++);
 				}
 
-				TLOff = pRec1->NT;
+				TLOff = gPointers.pRec1->NT;
 				break;
 			} else {
 				if(Debug_Flag) fprintf(stderr, "\n");
@@ -1752,7 +1827,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		}
 	}
 
-	if(pRec1->NX > 0) {
+	if(gPointers.pRec1->NX > 0) {
 		if(Debug_Flag) fprintf(stderr, "\n");
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		if(Debug_Flag) fprintf(stderr, "@@ Transformer Parameters                                                   @@\n");
@@ -1760,12 +1835,12 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "\n");
 
 		currentPosition = BytePosStartBlocks;
-		while(currentPosition < fileLen) {
+		while(currentPosition < gInputFileSize) {
 			uint32_t start;
 			uint32_t remain;
 			uint32_t need;
 
-			MAP(pHdr, BlkHeader, p, currentPosition);
+			MAP(pHdr, BlkHeader, gIMap, currentPosition);
 			start = currentPosition + sizeof(BlkHeader);
 			remain = pHdr->BlockLen - sizeof(BlkHeader);
 
@@ -1780,24 +1855,24 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 
 				// Map the blocks.
 				need = sizeof(TransformerBlockA);
-				VMAP(pBlk15A, TransformerBlockA, p, start, need);
+				VMAP(pBlk15A, TransformerBlockA, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				// There is one extra (dummy/reserved) block at the start,
 				// hence the "1 +".
 				need = (1 + pBlk15A->NX) * sizeof(TransformerBlockB);
-				VMAP(pBlk15B, TransformerBlockB, p, start, need);
+				VMAP(pBlk15B, TransformerBlockB, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				need = (1 + pBlk15A->NX) * sizeof(TransformerBlockC);
-				VMAP(pBlk15C, TransformerBlockC, p, start, need);
+				VMAP(pBlk15C, TransformerBlockC, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				need = (1 + pBlk15A->NX) * sizeof(TransformerBlockD);
-				VMAP(pBlk15D, TransformerBlockD, p, start, need);
+				VMAP(pBlk15D, TransformerBlockD, gIMap, start, need);
 				start += need;
 				remain -= need;
 
@@ -1843,7 +1918,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		}
 	}
 
-	if(pRec1->NLNet > 0) {
+	if(gPointers.pRec1->NLNet > 0) {
 		if(Debug_Flag) fprintf(stderr, "\n");
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		if(Debug_Flag) fprintf(stderr, "@@ LNet Parameters                                                          @@\n");
@@ -1851,12 +1926,12 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "\n");
 
 		currentPosition = BytePosStartBlocks;
-		while(currentPosition < fileLen) {
+		while(currentPosition < gInputFileSize) {
 			uint32_t start;
 			uint32_t remain;
 			uint32_t need;
 
-			MAP(pHdr, BlkHeader, p, currentPosition);
+			MAP(pHdr, BlkHeader, gIMap, currentPosition);
 			start = currentPosition + sizeof(BlkHeader);
 			remain = pHdr->BlockLen - sizeof(BlkHeader);
 
@@ -1871,33 +1946,33 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 
 				// Map the blocks.
 				need = sizeof(LNetBlockA);
-				VMAP(pBlk17A, LNetBlockA, p, start, need);
+				VMAP(pBlk17A, LNetBlockA, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				// There is one extra (dummy/reserved) block at the start,
 				// hence the "1 +".
 				need = (1 + pBlk17A->NL) * sizeof(LNetBlockB);
-				VMAP(pBlk17B, LNetBlockB, p, start, need);
+				VMAP(pBlk17B, LNetBlockB, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				// There is one extra (dummy/reserved) block at the start,
 				// hence the "1 +".
 				need = (1 + pBlk17A->NL) * sizeof(LNetBlockC);
-				VMAP(pBlk17C, LNetBlockC, p, start, need);
+				VMAP(pBlk17C, LNetBlockC, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				// There is one extra (dummy/reserved) block at the start,
 				// hence the "1 +".
 				need = (1 + pBlk17A->NL) * sizeof(LNetBlockD);
-				VMAP(pBlk17D, LNetBlockD, p, start, need);
+				VMAP(pBlk17D, LNetBlockD, gIMap, start, need);
 				start += need;
 				remain -= need;
 
 				need = sizeof(LNetBlockE);
-				VMAP(pBlk17E, LNetBlockE, p, start, need);
+				VMAP(pBlk17E, LNetBlockE, gIMap, start, need);
 				start += need;
 				remain -= need;
 
@@ -1907,14 +1982,14 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 					// There is one extra (dummy/reserved) block at the start,
 					// hence the "1 +".
 					need = (1 + pBlk17A->NL) * sizeof(LNetBlockF);
-					VMAP(pBlk17F, LNetBlockF, p, start, need);
+					VMAP(pBlk17F, LNetBlockF, gIMap, start, need);
 					start += need;
 					remain -= need;
 
 					// There is one extra (dummy/reserved) block at the start,
 					// hence the "1 +".
 					need = (1 + pBlk17A->NL) * sizeof(LNetBlockG);
-					VMAP(pBlk17G, LNetBlockG, p, start, need);
+					VMAP(pBlk17G, LNetBlockG, gIMap, start, need);
 					start += need;
 					remain -= need;
 				} else {
@@ -1936,7 +2011,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 
 				}
 
-				if(pRec1->LNetType == 'Z') {
+				if(gPointers.pRec1->LNetType == 'Z') {
 					for(LnetOff = 1; LnetOff <= pBlk17A->NL; LnetOff++) {
 						if(Debug_Flag) fprintf(stderr, "B1R %10.6f, ", pBlk17D[LnetOff].B1R);
 						if(Debug_Flag) fprintf(stderr, "B1X %10.6f, ", pBlk17D[LnetOff].B1X);
@@ -1989,7 +2064,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		}
 	}
 
-	if(pRec1->NVirt > 0) {
+	if(gPointers.pRec1->NVirt > 0) {
 		if(Debug_Flag) fprintf(stderr, "\n");
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 		if(Debug_Flag) fprintf(stderr, "@@ Virt Parameters                                                          @@\n");
@@ -1997,12 +2072,12 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "\n");
 
 		currentPosition = BytePosStartBlocks;
-		while(currentPosition < fileLen) {
+		while(currentPosition < gInputFileSize) {
 			uint32_t start;
 			uint32_t remain;
 			uint32_t need;
 
-			MAP(pHdr, BlkHeader, p, currentPosition);
+			MAP(pHdr, BlkHeader, gIMap, currentPosition);
 			start = currentPosition + sizeof(BlkHeader);
 			remain = pHdr->BlockLen - sizeof(BlkHeader);
 
@@ -2016,13 +2091,13 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 				if(Debug_Flag) fprintf(stderr, "\n");
 
 				// Map the block.
-				VMAP(pBlk18, VirtSegmentBlock, p, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
+				VMAP(pBlk18, VirtSegmentBlock, gIMap, currentPosition + sizeof(BlkHeader), pHdr->BlockLen - sizeof(BlkHeader));
 
 				dumpVirtSegmentBlock(pHdr, pBlk18);
 
 				if(Debug_Flag) fprintf(stderr, "VWnr %d\n", pBlk18->VWnr);
 
-				for(VCnt = 1; VCnt <= pRec1->NVirt; VCnt++) {
+				for(VCnt = 1; VCnt <= gPointers.pRec1->NVirt; VCnt++) {
 					if(Debug_Flag) fprintf(stderr, "VSegNr %d\n", pBlk18->VSegNr[VCnt]);
 				}
 				break;
@@ -2038,61 +2113,61 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 		}
 
 		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		fprintf(stderr, "pRec1->NSrc %d\n", pRec1->NSrc);
-		for(RowOff = 1; RowOff <= pRec1->NSrc; RowOff++) {
+		fprintf(stderr, "gPointers.pRec1->NSrc %d\n", gPointers.pRec1->NSrc);
+		for(RowOff = 1; RowOff <= gPointers.pRec1->NSrc; RowOff++) {
 //If .Offset(RowOff, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 2).ClearContents
 //End If
 		}
 
-		fprintf(stderr, "pRec1->NL %d\n", pRec1->NL);
-		for(RowOff = 1; RowOff <= pRec1->NL; RowOff++) {
+		fprintf(stderr, "gPointers.pRec1->NL %d\n", gPointers.pRec1->NL);
+		for(RowOff = 1; RowOff <= gPointers.pRec1->NL; RowOff++) {
 //If .Offset(RowOff, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 2).ClearContents
 //End If
 		}
 
-		fprintf(stderr, "pRec1->NT %d\n", pRec1->NT);
-		for(RowOff = 1; RowOff <= pRec1->NT; RowOff++) {
+		fprintf(stderr, "gPointers.pRec1->NT %d\n", gPointers.pRec1->NT);
+		for(RowOff = 1; RowOff <= gPointers.pRec1->NT; RowOff++) {
 //If .Offset(RowOff, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 2).ClearContents
 //End If
 //If .Offset(RowOff, 3) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 4) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 4) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 3).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 4).ClearContents
 //End If
 		}
 
-		fprintf(stderr, "pRec1->NX %d\n", pRec1->NX);
-		for(RowOff = 1; RowOff <= pRec1->NX; RowOff++) {
+		fprintf(stderr, "gPointers.pRec1->NX %d\n", gPointers.pRec1->NX);
+		for(RowOff = 1; RowOff <= gPointers.pRec1->NX; RowOff++) {
 //If .Offset(RowOff, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 2).ClearContents
 //End If
 //If .Offset(RowOff, 3) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 4) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 4) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 3).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 4).ClearContents
 //End If
 		}
 
-		fprintf(stderr, "pRec1->NLNet %d\n", pRec1->NLNet);
-		for(RowOff = 1; RowOff <= pRec1->NLNet; RowOff += 2) {
+		fprintf(stderr, "gPointers.pRec1->NLNet %d\n", gPointers.pRec1->NLNet);
+		for(RowOff = 1; RowOff <= gPointers.pRec1->NLNet; RowOff += 2) {
 //If .Offset(RowOff, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff, 2).ClearContents
 //End If
 //If .Offset(RowOff + 1, 1) = pBlk18->VWnr Then
-//Vindex = wsf.Round((.Offset(RowOff + 1, 2) / 100 + 1 / (pRec1->NVirt * 2)) * pRec1->NVirt, 0)
+//Vindex = wsf.Round((.Offset(RowOff + 1, 2) / 100 + 1 / (gPointers.pRec1->NVirt * 2)) * gPointers.pRec1->NVirt, 0)
 //.Offset(RowOff + 1, 1).Value = "V" &amp; CStr(VSegs(Vindex))
 //.Offset(RowOff + 1, 2).ClearContents
 //End If
@@ -2146,7 +2221,7 @@ Read_EZNEC(char *FileToOpen, char *OutputFile)
 	Dim c As Range
 	Dim k As Integer
 	Dim QuitRow As Integer
-	FTOtxt = Left(FileToOpen, Len(FileToOpen) - 2) & "txt"
+	FTOtxt = Left(InputFile, Len(InputFile) - 2) & "txt"
 	If Len(Dir(FTOtxt)) > 0 Then
 		Workbooks.OpenText FileName:=FTOtxt, Origin:=xlWindows, StartRow:=1, DataType:=xlDelimited, TextQualifier:=xlDoubleQuote, ConsecutiveDelimiter:=True, Tab:=False, Semicolon:=False, Comma:=False, Space:=False, Other:=False, FieldInfo:=Array(Array(1, 2))
 		FromBk = ActiveWorkbook.Name
@@ -2222,6 +2297,8 @@ main(
 		// Override any -i.
 		pInput = argv[optind];
 	}
+
+	pass1();
 
 	Read_EZNEC(pInput, pOutput);
 

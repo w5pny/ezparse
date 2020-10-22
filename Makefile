@@ -15,5 +15,8 @@ $(BUILD_DIR)/%.o: %.c
 $(BUILD_DIR):
 	mkdir $(BUILD_DIR)
 
+install: $(BUILD_DIR) $(BUILD_DIR)/ezparse
+	cp $(BUILD_DIR)/ezparse ~/bin
+
 clean:
 	rm -fr build
