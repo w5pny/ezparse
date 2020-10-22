@@ -18,7 +18,7 @@
 #define TITLE_LEN	30
 
 #define PRIMARY_BS	170 // size of primary blocks
- 
+
 // Cast a void pointer to a char pointer, add an offset, then cast it to the
 // desired type.  While gcc would let us add a constant to a void pointer
 // directly, it is not portable.
@@ -449,6 +449,8 @@ typedef struct {
 	double				wdiam;		// For converting wire diameters
 	double				tldB;		// For converting transmission line dB
 } CONVERSION_FACTORS;
+
+double			PI = 4.0 * atan2(1.0, 1.0);
 
 void			*gIMap;				// Pointer to mmapped input file.
 off_t			gInputFileSize;			// Size of input file in bytes.
@@ -1153,6 +1155,90 @@ printCMCE(FILE *pOut)
 }
 
 void
+printWires(FILE *pOut)
+{
+	int i;
+	RecType2 *pRec2;
+	double tmp;
+
+	// We might want to handle virtual wires by finding #18 block first.
+	for(i = 0; i < gPointers.pRec1->NW; i++) {
+		pRec2 = gPointers.ppRec2[i];
+
+		fprintf(pOut, "GW %5d %7d ", i + 1, pRec2->WSegs);
+
+		fprintf(pOut, "%7g ", pRec2->WEnd1_X / gConvert.xyz);
+		fprintf(pOut, "%7g ", pRec2->WEnd1_Y / gConvert.xyz);
+		fprintf(pOut, "%7g ", pRec2->WEnd1_Z / gConvert.xyz);
+
+		fprintf(pOut, "%7g ", pRec2->WEnd2_X / gConvert.xyz);
+		fprintf(pOut, "%7g ", pRec2->WEnd2_Y / gConvert.xyz);
+		fprintf(pOut, "%7g ", pRec2->WEnd2_Z / gConvert.xyz);
+
+		if(pRec2->WDiaGa == (uint16_t)-1) {
+			// There is only one scale factor in the GS card, so
+			// we cannot show wire diameter in different units
+			// than wire endpoints.
+			//
+			// NEC wants the radius, hence the divide-by-2.
+			fprintf(pOut, "%7g\n", (pRec2->WireDia / 2.0) / gConvert.xyz);
+		} else {
+			// Calculate the wire diameter in meters, based on AWG
+			// algorithm.  Works for wire GA 0 and thinner.
+			//
+			// Print it based on the user's scalefactor.
+			//
+			// NEC wants the radius, hence the divide-by-2.
+			tmp = 0.005 * pow(92.0, ((36.0 - pRec2->WDiaGa) / 39.0)) * 0.0254;
+			fprintf(pOut, "%7g\n", (tmp / 2.0) / gConvert.xyz);
+		}
+	}
+	fprintf(pOut, "GS %5d %7d %7g\n", 0, 0, gConvert.xyz);
+	fprintf(pOut, "GE\n");
+}
+
+int
+printExcitation(FILE *pOut)
+{
+	int i;
+	RecType2 *pRec2;
+	RecType2 *pWire;
+	int type;
+	int wireNo;
+	int segNo;
+
+	for(i = 0; i < gPointers.pRec1->NSrc; i++) {
+		pRec2 = gPointers.ppRec2[i];
+		wireNo = pRec2->SWNr;
+
+		if((wireNo > 0) && (wireNo <= gPointers.pRec1->NW)) {
+			pWire = gPointers.ppRec2[wireNo - 1];
+		} else {
+			fprintf(stderr, "Source %d references wire %d, which doesn't exist\n", i + 1, wireNo);
+			return -1;
+		}
+
+		switch(pRec2->Stype) {
+			case 'I':
+				type = 6;
+				break;
+			case 'J': // FIXME - not sure how to handle this yet.
+			case 'W': // FIXME - not sure how to handle this yet.
+			default:
+				type = 0;
+				break;
+		}
+
+		segNo = (int)round(((pWire->WSegs - 1) * (pRec2->SWPct / 100.0)) + 1);
+		fprintf(pOut, "EX %5d %7d %7d %7d ", type, wireNo, segNo, 0);
+
+		fprintf(pOut, "%7g %7g\n",
+				pRec2->SMP_M * cos(pRec2->SMP_Pdeg * PI / 180.0),
+				pRec2->SMP_M * sin(pRec2->SMP_Pdeg * PI / 180.0));
+	}
+}
+
+void
 setConversionFactors()
 {
 	// Apparently, there are some files where the units are not set
@@ -1242,8 +1328,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	uint32_t currentPosition;
        	uint32_t BytePosStartBlocks;
-	char *myUnitsXYZ[] = { "m", "mm", "ft", "in", "wl" };
-	char *myUnitsDia[] = { "mm", "mm", "in", "in" };
 	char *mySType[] = { "V", "I", "SV", "SI" };
 	char *Config[] = { "Ser", "Par", "Trap"};
 	char *ExtConn[] = { "Ser", "Par" };
@@ -1308,100 +1392,10 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	// Map all the RecType2 blocks.
 	mapRecType2();
 
-	// Start at the first RecType2 block, and dump all the wires.  
-	//
-	// We might want to handle virtual wires by finding #18 block first.
-	for(i = 0; i < gPointers.pRec1->NW; i++) {
-		RecType2 *pRec2;
-		double v;
+	printWires(pOut);
 
-		pRec2 = gPointers.ppRec2[i];
+	printExcitation(pOut);
 
-		fprintf(pOut, "GW %3d %3d ", i + 1, pRec2->WSegs);
-
-		v = pRec2->WEnd1_X / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd1_X);
-
-		v = pRec2->WEnd1_Y / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd1_Y);
-
-		v = pRec2->WEnd1_Z / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd1_Z);
-
-		v = pRec2->WEnd2_X / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd2_X);
-
-		v = pRec2->WEnd2_Y / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd2_Y);
-
-		v = pRec2->WEnd2_Z / gConvert.xyz;
-		fprintf(pOut, "%8g ", pRec2->WEnd2_Z);
-
-		if(pRec2->WDiaGa == (uint16_t)-1) {
-			v = pRec2->WireDia / gConvert.wdiam;
-			fprintf(pOut, "%8g\n", pRec2->WireDia / 2);
-		} else {
-			double diameterInches = 0.005 * pow(92.0, ((36.0 - pRec2->WDiaGa) / 39.0));
-
-			// Always convert to meters.
-			fprintf(pOut, "%8g\n", diameterInches * 0.0254);
-		}
-
-		// Move to the next block.
-		currentPosition += PRIMARY_BS;
-	}
-	fprintf(pOut, "GE\n");
-
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Find Sources                                                             @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
-
-	// Start at the first RecType2 block, and dump all the sources.  
-	if(Debug_Flag) fprintf(stderr, "Number of Sources = %d\n", gPointers.pRec1->NSrc);
-	currentPosition = PRIMARY_BS;
-	for(SrcOff = 1; SrcOff <= gPointers.pRec1->NSrc; SrcOff++) {
-		int i;
-		double v;
-
-		MAP(pRec2, RecType2, gIMap, currentPosition);
-
-		dumpRecType2(pRec2);
-
-		i = pRec2->SWNr;
-		if(Debug_Flag) fprintf(stderr, "Src Wire Number = %d, ", i);
-
-		v = pRec2->SWPct;
-		if(Debug_Flag) fprintf(stderr, "Percent from wire start = %10.6f\n", v);
-
-		v = pRec2->SMP_M;
-		if(Debug_Flag) fprintf(stderr, "Src Magnitude = %10.6f, ", v);
-
-		v = pRec2->SMP_Pdeg;
-		if(Debug_Flag) fprintf(stderr, "Src Phase = %10.6f, ", v);
-
-		if(pRec2->Stype == 0) {
-		       	pRec2->Stype = 'V';
-		}
-		switch(pRec2->Stype) {
-			case 'V': strlcpy(SrcType_Value, mySType[0], STR_LEN); break;
-			case 'I': strlcpy(SrcType_Value, mySType[1], STR_LEN); break;
-			case 'W': strlcpy(SrcType_Value, mySType[2], STR_LEN); break;
-			case 'J': strlcpy(SrcType_Value, mySType[3], STR_LEN); break;
-			default:  strlcpy(SrcType_Value, "?", STR_LEN);
-		}
-		if(Debug_Flag) fprintf(stderr, "SrcType = %s\n", SrcType_Value);
-
-		// Move to the next block.
-		currentPosition += PRIMARY_BS;
-	}
-
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Find Loads                                                               @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
 
 	if(Debug_Flag) fprintf(stderr, "Number of loads = %d\n", gPointers.pRec1->NL);
 	if((gPointers.pRec1->NL > 0)) {
