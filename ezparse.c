@@ -1124,6 +1124,58 @@ mapRecType2()
 }
 
 void
+setConversionFactors()
+{
+	// Apparently, there are some files where the units are not set
+	// properly.  In that case, we force "Wavelength".
+	if(gPointers.pRec1->Units == 0) {
+		gPointers.pRec1->Units = 'W';
+	}
+	if(gPointers.pRec1->DiaUnits == 0) {
+		gPointers.pRec1->DiaUnits = 'W';
+	}
+
+	switch(gPointers.pRec1->Units) {
+		case 'M':	// Use mm for wire diameter, meters for everything else 
+			gConvert.xyz = 1;
+			gConvert.wdiam = 0.001;
+			gConvert.tldB = 1;
+			break;
+		case 'L':	// Use meters for TL Loss, mm for everything else
+			gConvert.xyz = 0.001;
+			gConvert.wdiam = 0.001;
+			gConvert.tldB = 1;
+			break;
+		case 'F':	// Use inches for wire diameter, feet for everything else
+			gConvert.xyz = 0.3048;
+			gConvert.wdiam = 0.0254;
+			gConvert.tldB = 0.3048;
+			break;
+		case 'I':	// Use feet for TL Loss, inches for everything else
+			gConvert.xyz = 0.0254;
+			gConvert.wdiam = 0.0254;
+			gConvert.tldB = 0.3048;
+			break;
+		case 'W':	// Wavelength has to be converted based on frequency
+			gConvert.xyz = 299.792458 / gFrequency;	// Use meters for wire ends
+
+			switch(gPointers.pRec1->DiaUnits) {
+				case 'L':	// Use mm for wire diameter
+					gConvert.wdiam = 0.001;
+					break;
+				case 'I':	// Use inches for wire diameter
+					gConvert.wdiam = 0.0254;
+					break;
+				case 'W':	// Use wavelength for wire diameter
+					gConvert.wdiam = gConvert.xyz;
+					break;
+			}
+
+			gConvert.tldB = 0.3048; // Use feet for TL Loss
+	}
+}
+
+void
 printCMCE(FILE *pOut)
 {
 	char buf[TITLE_LEN + 1];
@@ -1198,6 +1250,12 @@ printWires(FILE *pOut)
 }
 
 int
+segmentNumber(int segments, double percent)
+{
+	return (int)round(((segments - 1) * (percent / 100.0)) + 1);
+}
+
+int
 printExcitation(FILE *pOut)
 {
 	int i;
@@ -1229,7 +1287,7 @@ printExcitation(FILE *pOut)
 				break;
 		}
 
-		segNo = (int)round(((pWire->WSegs - 1) * (pRec2->SWPct / 100.0)) + 1);
+		segNo = segmentNumber(pWire->WSegs, pRec2->SWPct);
 		fprintf(pOut, "EX %5d %7d %7d %7d ", type, wireNo, segNo, 0);
 
 		fprintf(pOut, "%7g %7g\n",
@@ -1238,55 +1296,50 @@ printExcitation(FILE *pOut)
 	}
 }
 
-void
-setConversionFactors()
+int
+printLoads(FILE *pOut)
 {
-	// Apparently, there are some files where the units are not set
-	// properly.  In that case, we force "Wavelength".
-	if(gPointers.pRec1->Units == 0) {
-		gPointers.pRec1->Units = 'W';
-	}
-	if(gPointers.pRec1->DiaUnits == 0) {
-		gPointers.pRec1->DiaUnits = 'W';
-	}
+	int i;
+	RecType2 *pRec2;
+	RecType2 *pWire;
+	int wireNo;
+	int segNo;
+	int type;
 
-	switch(gPointers.pRec1->Units) {
-		case 'M':	// Use mm for wire diameter, meters for everything else 
-			gConvert.xyz = 1;
-			gConvert.wdiam = 0.001;
-			gConvert.tldB = 1;
-			break;
-		case 'L':	// Use meters for TL Loss, mm for everything else
-			gConvert.xyz = 0.001;
-			gConvert.wdiam = 0.001;
-			gConvert.tldB = 1;
-			break;
-		case 'F':	// Use inches for wire diameter, feet for everything else
-			gConvert.xyz = 0.3048;
-			gConvert.wdiam = 0.0254;
-			gConvert.tldB = 0.3048;
-			break;
-		case 'I':	// Use feet for TL Loss, inches for everything else
-			gConvert.xyz = 0.0254;
-			gConvert.wdiam = 0.0254;
-			gConvert.tldB = 0.3048;
-			break;
-		case 'W':	// Wavelength has to be converted based on frequency
-			gConvert.xyz = 299.792458 / gFrequency;	// Use meters for wire ends
+	double v;
 
-			switch(gPointers.pRec1->DiaUnits) {
-				case 'L':	// Use mm for wire diameter
-					gConvert.wdiam = 0.001;
-					break;
-				case 'I':	// Use inches for wire diameter
-					gConvert.wdiam = 0.0254;
-					break;
-				case 'W':	// Use wavelength for wire diameter
-					gConvert.wdiam = gConvert.xyz;
-					break;
+	for(i = 0; i < gPointers.pRec1->NL; i++) {
+		pRec2 = gPointers.ppRec2[i];
+		wireNo = pRec2->LWNr;
+
+		if((wireNo > 0) && (wireNo <= gPointers.pRec1->NW)) {
+			pWire = gPointers.ppRec2[wireNo - 1];
+		} else {
+			fprintf(stderr, "Load %d references wire %d, which doesn't exist\n", i + 1, wireNo);
+			return -1;
+		}
+
+		segNo = segmentNumber(pWire->WSegs, pRec2->LWPct);
+
+		if(gPointers.pRec1->LType == 'Z') {
+			fprintf(pOut, "LD %5d %7d %7d %7d ", 4, wireNo, segNo, segNo);
+			fprintf(pOut, "%7g %7g\n", pRec2->LZ_R, pRec2->LZ_I);
+		} else if(gPointers.pRec1->LType == 'R') {
+			if(pRec2->LConn == 'P') {
+				// Parallel
+				type = 1;
+			} else {
+				// Series or unspecified.  Force series to
+				// cover the unspecified case.
+				pRec2->LConn = 'S';
+				type = 0;
 			}
 
-			gConvert.tldB = 0.3048; // Use feet for TL Loss
+			fprintf(pOut, "LD %5d %7d %7d %7d ", type, wireNo, segNo, segNo);
+			fprintf(pOut, "%7g %7g %7g\n", pRec2->sngR, pRec2->sngL, pRec2->sngC);
+		} else {
+			// Laplace
+		}
 	}
 }
 
@@ -1331,8 +1384,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	char *mySType[] = { "V", "I", "SV", "SI" };
 	char *Config[] = { "Ser", "Par", "Trap"};
 	char *ExtConn[] = { "Ser", "Par" };
-	int optRjX = false;
-	int laplaceLoad = false;
 	int optRjXb;
 	uint32_t cboGtypeLI;
 	uint32_t cboWireLossLI;
@@ -1348,7 +1399,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	int SrcOff;
 	int MaxedOutSLT;
 	int rv;
-	int LdOff;
 	int TLOff;
 	struct stat sb;
 	int XfmrOff;
@@ -1396,83 +1446,7 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	printExcitation(pOut);
 
-
-	if(Debug_Flag) fprintf(stderr, "Number of loads = %d\n", gPointers.pRec1->NL);
-	if((gPointers.pRec1->NL > 0)) {
-		switch(gPointers.pRec1->LType) {
-			case 'Z':
-				optRjX = true;
-				laplaceLoad = false;
-				break;
-			case 'R':
-				optRjX = false;
-				laplaceLoad = false;
-				break;
-			default:
-				optRjX = false;
-				laplaceLoad = true;
-				break;
-		}
-		if(Debug_Flag) fprintf(stderr, "optRjX %d, laplaceLoad %d\n", optRjX, laplaceLoad);
-
-		if(!laplaceLoad) {
-			int i;
-			double v;
-
-			currentPosition = PRIMARY_BS;
-			for(LdOff = 1; LdOff <= gPointers.pRec1->NL; LdOff++) {
-				MAP(pRec2, RecType2, gIMap, currentPosition);
-
-				dumpRecType2(pRec2);
-
-				i = pRec2->LWNr;
-				if(Debug_Flag) fprintf(stderr, "Load Wire Number = %d, ", i);
-
-				v = pRec2->LWPct;
-				if(Debug_Flag) fprintf(stderr, "Percent from wire start = %10.6f\n", v);
-
-				if(gPointers.pRec1->LType == 'Z') {
-					v = pRec2->LZ_R;
-					if(Debug_Flag) fprintf(stderr, "Load resistance = %10.6f, ", v);
-
-					v = pRec2->LZ_I;
-					if(Debug_Flag) fprintf(stderr, "Load reactance = %10.6f\n", v);
-				} else {
-					v = pRec2->sngR;
-					if(Debug_Flag) fprintf(stderr, "Resistance = %10.6f, ", v);
-
-					v = pRec2->sngL * 1000000;
-					if(Debug_Flag) fprintf(stderr, "Inductance = %10.6f, ", v);
-
-					v = pRec2->sngC * 1000000000000;
-					if(Debug_Flag) fprintf(stderr, "Capacitance = %10.6f, ", v);
-
-					v = pRec2->sngRFreqMHz;
-					if(Debug_Flag) fprintf(stderr, "Frequency = %10.6f MHz\n", v);
-
-					switch(pRec2->strRLCType) {
-						case 'S': strlcpy(LoadConfig_Value, Config[0], STR_LEN); break;
-						case 'P': strlcpy(LoadConfig_Value, Config[1], STR_LEN); break;
-						case 'T': strlcpy(LoadConfig_Value, Config[2], STR_LEN); break;
-						default:  strlcpy(LoadConfig_Value, "?", STR_LEN); break;
-					}
-					if(Debug_Flag) fprintf(stderr, "Load Configuration = %s\n", LoadConfig_Value);
-				}
-				if(pRec2->LConn != 'S' && pRec2->LConn != 'P') {
-					pRec2->LConn = 'S';
-				}
-				switch(pRec2->LConn) {
-					case 'S': strlcpy(LoadType_Value, ExtConn[0], STR_LEN); break;
-					case 'P': strlcpy(LoadType_Value, ExtConn[1], STR_LEN); break;
-					default:  strlcpy(LoadType_Value, "?", STR_LEN); break;
-				}
-				if(Debug_Flag) fprintf(stderr, "Load Configuration = %s\n", LoadType_Value);
-
-				// Move to the next block.
-				currentPosition += PRIMARY_BS;
-			}
-		}
-	}
+	printLoads(pOut);
 
 	if(Debug_Flag) fprintf(stderr, "\n");
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
@@ -2175,12 +2149,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@ Done Looking for Var Blocks                                              @@\n");
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
-
-	if(optRjX) {
-		if(Debug_Flag) fprintf(stderr, "RjX true\n");
-	} else {
-		if(Debug_Flag) fprintf(stderr, "RLC true\n");
-	}
 
 	if(optRjXb) {
 		if(Debug_Flag) fprintf(stderr, "RjXb true\n");
