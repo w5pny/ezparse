@@ -1583,7 +1583,20 @@ printLoads(FILE *pOut)
 		}
 	}
 
+	// Synthesize loads based on wire conductivity.
+	if(gPointers.pRec1->WRho != 0 || gPointers.pRec1->WMu != 1) {
+		for(i = 0; i < gPointers.pRec1->NW; i++) {
+			fprintf(pOut, "LD %5d %8d %8d %8d ", 5, i + 1, 0, 0);
+			fprintf(pOut, "%8g %8g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
+		}
+	}
+
 	return 0;
+}
+
+int
+printGrounds(FILE *pOut)
+{
 }
 
 int
@@ -1713,11 +1726,13 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	printWires(pOut);
 
-	printExcitation(pOut);
-
 	printLoads(pOut);
 
+	printExcitation(pOut);
+
 	printTransmissionLines(pOut);
+
+	printGrounds(pOut);
 
 	if(Debug_Flag) fprintf(stderr, "\n");
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
