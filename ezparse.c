@@ -1489,7 +1489,9 @@ printWires(FILE *pOut)
 			fprintf(pOut, "%8g\n", (tmp / 2.0) / gConvert.xyz);
 		}
 	}
-	fprintf(pOut, "GS %5d %8d %8g\n", 0, 0, gConvert.xyz);
+	if(gConvert.xyz != 1.0) {
+		fprintf(pOut, "GS %5d %8d %8g\n", 0, 0, gConvert.xyz);
+	}
 	fprintf(pOut, "GE %5d %8d\n", 0, 0);
 }
 
@@ -1601,50 +1603,72 @@ printGrounds(FILE *pOut)
 	int type;
 	RecType2 *pRec2;
 
-	// Gtype is ground type:
-	//
-	// F = free space
-	// P = perfect
-	// R = real
-	//
-	// If real, then also look at GAnal where:
-	//
-	// H (or F) means Sommerfeld
-	// M means MININEC
-	//
-	// We cannot do MININEC, so there is no advantage to
-	// looking at GAnal
-	//
-	// There are two Sommerfeld methods, and we always
-	// pick the higher quality one if we have the NEC 4
-	// engine available.
 	switch(gPointers.pRec1->Gtype) {
 		case 'F':
-			type = 0;
+			// F = free space
+			fprintf(pOut, "GN %5d\n", -1);
 			break;
 
 		case 'P':
-			type = 1;
+			// P = perfect
+			fprintf(pOut, "GN %5d\n", 1);
 			break;
 
 		case 'R':
+			// R = real
+			//
+			// If real, then we could also look at GAnal where:
+			//
+			// H means Sommerfeld (high accuracy)
+			// M means MININEC
+			//
+			// We cannot do MININEC, so there is no advantage to
+			// looking at GAnal
+			//
+			// There are two Sommerfeld methods, and we always
+			// pick the higher quality one if we have the NEC 4
+			// engine available.
 			type = 2;
 			if(gNecVersion == 4) {
 				type = 3;
 			}
+
+			pRec2 = gPointers.ppRec2[0];
+
+			fprintf(pOut, "GN %5d %8d %8d %8d ", type, gPointers.pRec1->NR, 0, 0);
+			fprintf(pOut, "%8g %8g\n", pRec2->MEps, pRec2->MSigma);
+
+			if(gPointers.pRec1->Gtype == 'R') {
+				if(gPointers.pRec1->NM == 2) {
+					// FIXME radials, second ground medium
+				}
+			}
 			break;
 	}
 
-	pRec2 = gPointers.ppRec2[0];
+	return 0;
+}
 
-	fprintf(pOut, "GN %5d %8d %8d %8d ", type, gPointers.pRec1->NR, 0, 0);
-	fprintf(pOut, "%8g %8g\n", pRec2->MEps, pRec2->MSigma);
+int
+printFrequencies(FILE *pOut)
+{
+	if(gpFSB) {
+		if(gpFSB->FStep == 0) {
+			// Step size is zero, so there is only a single frequency.
+			// We cannot use gpFSB->FStart because it is likely zero
+			// also.
+			if(Debug_Flag) fprintf(stderr, "TCFreq %g\n", gFrequency);
+			fprintf(pOut, "FR %5d %8d %8d %8d ", 0, 1, 0, 0);
+			fprintf(pOut, "%8g %8g\n", gFrequency, 0.0);
+		} else {
+			int steps = 1 + (int)((gpFSB->FStop - gpFSB->FStart) / gpFSB->FStep);
 
-	if(gPointers.pRec1->Gtype == 'R') {
-		if(gPointers.pRec1->NM == 2) {
-			// FIXME radials, second ground medium
+			fprintf(pOut, "FR %5d %8d %8d %8d ", 0, steps, 0, 0);
+			fprintf(pOut, "%8g %8g\n", gpFSB->FStart, gpFSB->FStep);
 		}
 	}
+
+	return 0;
 }
 
 int
@@ -1782,58 +1806,7 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	printGrounds(pOut);
 
-	if(gPointers.pRec1->PType == '3') {
-		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%g", 0.0);
-	} else if(gPointers.pRec1->PType == 'A' || gPointers.pRec1->OldPType == 'A') {
-		cboPtypeLI = 0;
-		snprintf(txtPang, STR_LEN, "%g", gPointers.pRec1->Pangle);
-	} else if(gPointers.pRec1->PType == 'E' || gPointers.pRec1->OldPType == 'E') {
-		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%g", gPointers.pRec1->Pangle);
-	} else {
-		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%g", 0.0);
-	}
-	if(Debug_Flag) fprintf(stderr, "txtPang %s, ", txtPang);
-
-	if(gPointers.pRec1->PStep == 5) {
-		cboPstepLI = 0;
-	} else if(gPointers.pRec1->PStep == 1) {
-		cboPstepLI = 1;
-	} else if(gPointers.pRec1->PStep == 0.5) {
-		cboPstepLI = 2;
-	} else if(gPointers.pRec1->PStep = 0.1) {
-		cboPstepLI = 3;
-	} else {
-		cboPstepLI = 1;
-	}
-	if(Debug_Flag) fprintf(stderr, "cboPstepLI %d\n", cboPstepLI);
-
-	if(gpFSB) {
-
-		if(Debug_Flag) fprintf(stderr, "\n");
-		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		if(Debug_Flag) fprintf(stderr, "@@ Have Frequency Sweep Block                                               @@\n");
-		if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		if(Debug_Flag) fprintf(stderr, "\n");
-
-		if(gpFSB->FStep == 0) {
-			// Step size is zero, so there is only a single frequency.
-			// We cannot use gpFSB->FStart because it is likely zero
-			// also.
-			if(Debug_Flag) fprintf(stderr, "TCFreq %g\n", gFrequency);
-		} else {
-			double Freq;
-			int i;
-
-			Freq = gpFSB->FStart;
-			for(i = 1; i <= round(((double)gpFSB->FStop - (double)gpFSB->FStart) / (double)gpFSB->FStep) + 1; i++) {
-				if(Debug_Flag) fprintf(stderr, "TCFreq %g\n", Freq);
-				Freq += gpFSB->FStep;
-			}
-		}
-	}
+	printFrequencies(pOut);
 
 	if(gpWIB) {
 		int i;
