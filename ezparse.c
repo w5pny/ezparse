@@ -14,10 +14,19 @@
 #include <string.h>
 #include <unistd.h>
 
-#define STR_LEN		16
-#define TITLE_LEN	30
+#define STR_LEN			16
+#define TITLE_LEN		30
 
-#define PRIMARY_BS	170 // size of primary blocks
+#define PRIMARY_BS		170 // size of primary blocks
+
+#define VB_FREQ_SWEEP		11
+#define VB_WIRE_INS		12
+#define VB_TL_LOSS		14
+#define VB_TRANSFORMER		15
+#define VB_Y_PARAM		16
+#define VB_L_NETWORK		17
+#define VB_VIRTUAL_SEG		18
+#define VB_PLANE_WAVE_SRC	31
 
 // Cast a void pointer to a char pointer, add an offset, then cast it to the
 // desired type.  While gcc would let us add a constant to a void pointer
@@ -346,6 +355,13 @@ typedef struct {
 	float P2RelZ;		// Port 2 impedance (if negative, reverse polarity
 } TransformerBlockD;
 
+typedef struct {
+	TransformerBlockA *pA;
+	TransformerBlockB *pB;
+	TransformerBlockC *pC;
+	TransformerBlockD *pD;
+} TransformerBlockPtrs;
+
 // L Network Parameters
 //
 // This block consists of five variable-length arrays.  Additionally, the
@@ -395,6 +411,16 @@ typedef struct {
 	uint8_t B2RLCType;	// Port 2 hookup: S = series, P = parallel, T = trap
 } LNetBlockG;
 
+typedef struct {
+	LNetBlockA *pA;
+	LNetBlockB *pB;
+	LNetBlockC *pC;
+	LNetBlockD *pD;
+	LNetBlockE *pE;
+	LNetBlockF *pF;
+	LNetBlockG *pG;
+} LNetBlockPtrs;
+
 // Virtual Segments - used to avoid modeling wires just to insert a source
 // or load on a transmission line.  Perhaps other uses as well.  EZNEC
 // converts these to real wires far away for compatibility with older
@@ -430,8 +456,8 @@ typedef struct {
 		FreqSweepBlk		*pFSB;
 		WireInsBlock		*pWIB;
 		TLineLossBlock		*pTLLB;
-		TransformerBlock	*pTB;
-		LNetBlock		*pLNB;
+		TransformerBlockPtrs	TB;
+		LNetBlockPtrs		LNB;
 		VirtSegmentBlock	*pVSB;
 	} u;
 } BLOCK;
@@ -866,7 +892,7 @@ dumpTLineLossBlock(BlkHeader *pH, TLineLossBlock *p)
 }
 
 void
-dumpTransformerBlock(BlkHeader *pH, TransformerBlockA *pA, TransformerBlockB *pB, TransformerBlockC *pC, TransformerBlockD *pD)
+dumpTransformerBlock(BlkHeader *pH, TransformerBlockPtrs *p)
 {
 	int i;
 
@@ -880,28 +906,25 @@ dumpTransformerBlock(BlkHeader *pH, TransformerBlockA *pA, TransformerBlockB *pB
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "TransformerBlock: NX = %d\n", pA->NX);
+	fprintf(stderr, "TransformerBlock: NX = %d\n", p->pA->NX);
 
-	for(i = 0; i <= pA->NX; i++) {
-		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Wire = %d\n", i, pB->P1WNr);
-		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Wire = %d\n", i, pB->P2WNr);
-		++pB;
+	for(i = 0; i <= p->pA->NX; i++) {
+		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Wire = %d\n", i, p->pB[i].P1WNr);
+		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Wire = %d\n", i, p->pB[i].P2WNr);
 	}
 
-	for(i = 0; i <= pA->NX; i++) {
-		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Percent = %f\n", i, pC->P1WPct);
-		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Percent = %f\n", i, pC->P2WPct);
-		++pC;
+	for(i = 0; i <= p->pA->NX; i++) {
+		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Percent = %f\n", i, p->pC[i].P1WPct);
+		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Percent = %f\n", i, p->pC[i].P2WPct);
 	}
 
-	for(i = 0; i <= pA->NX; i++) {
-		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Z = %f\n", i, pD->P1RelZ);
-		if(pD->P2RelZ >= 0) {
-			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Norm\n", i, pD->P2RelZ);
+	for(i = 0; i <= p->pA->NX; i++) {
+		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Z = %f\n", i, p->pD[i].P1RelZ);
+		if(p->pD[i].P2RelZ >= 0) {
+			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Norm\n", i, p->pD[i].P2RelZ);
 		} else {
-			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Rev\n", i, -pD->P2RelZ);
+			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Rev\n", i, -p->pD[i].P2RelZ);
 		}
-		++pD;
 	}
 
 	fprintf(stderr, "\n");
@@ -912,16 +935,7 @@ dumpTransformerBlock(BlkHeader *pH, TransformerBlockA *pA, TransformerBlockB *pB
 }
 
 void
-dumpLNetBlock(
-		BlkHeader *pH,
-		LNetBlockA *pA,
-		LNetBlockB *pB,
-		LNetBlockC *pC,
-		LNetBlockD *pD,
-		LNetBlockE *pE,
-		LNetBlockF *pF,
-		LNetBlockG *pG
-		)
+dumpLNetBlock(BlkHeader *pH, LNetBlockPtrs *p)
 {
 	int i;
 
@@ -937,47 +951,42 @@ dumpLNetBlock(
 
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "LNetBlock: NL = %d\n", pA->NL);
+	fprintf(stderr, "LNetBlock: NL = %d\n", p->pA->NL);
 
-	for(i = 0; i <= pA->NL; i++) {
-		fprintf(stderr, "LNetBlock: Port1 Tx[%d] Wire = %d\n", i, pB->P1WNr);
-		fprintf(stderr, "LNetBlock: Port2 Tx[%d] Wire = %d\n", i, pB->P2WNr);
-		++pB;
+	for(i = 0; i <= p->pA->NL; i++) {
+		fprintf(stderr, "LNetBlock: Port1 Tx[%d] Wire = %d\n", i, p->pB[i].P1WNr);
+		fprintf(stderr, "LNetBlock: Port2 Tx[%d] Wire = %d\n", i, p->pB[i].P2WNr);
 	}
 
-	for(i = 0; i <= pA->NL; i++) {
-		fprintf(stderr, "LNetBlock: Port1 Tx[%d] Percent = %g\n", i, pC->P1WPct);
-		fprintf(stderr, "LNetBlock: Port2 Tx[%d] Percent = %g\n", i, pC->P2WPct);
-		++pC;
+	for(i = 0; i <= p->pA->NL; i++) {
+		fprintf(stderr, "LNetBlock: Port1 Tx[%d] Percent = %g\n", i, p->pC[i].P1WPct);
+		fprintf(stderr, "LNetBlock: Port2 Tx[%d] Percent = %g\n", i, p->pC[i].P2WPct);
 	}
 
-	for(i = 0; i <= pA->NL; i++) {
-		fprintf(stderr, "LNetBlock: Port1 Tx[%d] R = %g\n", i, pD->B1R);
-		fprintf(stderr, "LNetBlock: Port1 Tx[%d] X = %g\n", i, pD->B1X);
-		fprintf(stderr, "LNetBlock: Port2 Tx[%d] R = %g\n", i, pD->B2R);
-		fprintf(stderr, "LNetBlock: Port2 Tx[%d] X = %g\n", i, pD->B2X);
-		++pD;
+	for(i = 0; i <= p->pA->NL; i++) {
+		fprintf(stderr, "LNetBlock: Port1 Tx[%d] R = %g\n", i, p->pD[i].B1R);
+		fprintf(stderr, "LNetBlock: Port1 Tx[%d] X = %g\n", i, p->pD[i].B1X);
+		fprintf(stderr, "LNetBlock: Port2 Tx[%d] R = %g\n", i, p->pD[i].B2R);
+		fprintf(stderr, "LNetBlock: Port2 Tx[%d] X = %g\n", i, p->pD[i].B2X);
 	}
 
-	fprintf(stderr, "LNetBlock: NrRLC = %d\n", pE->NrRLC);
+	fprintf(stderr, "LNetBlock: NrRLC = %d\n", p->pE->NrRLC);
 
-	if(pE->NrRLC) {
-		for(i = 0; i <= pA->NL; i++) {
-			fprintf(stderr, "LNetBlock: Port1 Tx[%d] R = %g\n", i, pF->B1rlcR);
-			fprintf(stderr, "LNetBlock: Port1 Tx[%d] L = %g\n", i, pF->B1rlcL);
-			fprintf(stderr, "LNetBlock: Port1 Tx[%d] C = %g\n", i, pF->B1rlcC);
-			fprintf(stderr, "LNetBlock: Port1 Tx[%d] F = %g\n", i, pF->B1rlcF);
-			fprintf(stderr, "LNetBlock: Port2 Tx[%d] R = %g\n", i, pF->B2rlcR);
-			fprintf(stderr, "LNetBlock: Port2 Tx[%d] L = %g\n", i, pF->B2rlcL);
-			fprintf(stderr, "LNetBlock: Port2 Tx[%d] C = %g\n", i, pF->B2rlcC);
-			fprintf(stderr, "LNetBlock: Port2 Tx[%d] F = %g\n", i, pF->B2rlcF);
-			++pF;
+	if(p->pE->NrRLC) {
+		for(i = 0; i <= p->pA->NL; i++) {
+			fprintf(stderr, "LNetBlock: Port1 Tx[%d] R = %g\n", i, p->pF[i].B1rlcR);
+			fprintf(stderr, "LNetBlock: Port1 Tx[%d] L = %g\n", i, p->pF[i].B1rlcL);
+			fprintf(stderr, "LNetBlock: Port1 Tx[%d] C = %g\n", i, p->pF[i].B1rlcC);
+			fprintf(stderr, "LNetBlock: Port1 Tx[%d] F = %g\n", i, p->pF[i].B1rlcF);
+			fprintf(stderr, "LNetBlock: Port2 Tx[%d] R = %g\n", i, p->pF[i].B2rlcR);
+			fprintf(stderr, "LNetBlock: Port2 Tx[%d] L = %g\n", i, p->pF[i].B2rlcL);
+			fprintf(stderr, "LNetBlock: Port2 Tx[%d] C = %g\n", i, p->pF[i].B2rlcC);
+			fprintf(stderr, "LNetBlock: Port2 Tx[%d] F = %g\n", i, p->pF[i].B2rlcF);
 		}
 
-		for(i = 0; i <= pA->NL; i++) {
-			fprintf(stderr, "LNetBlock: Port1 Tx[%d] Type = %d\n", i, pG->B1RLCType);
-			fprintf(stderr, "LNetBlock: Port2 Tx[%d] Type = %d\n", i, pG->B2RLCType);
-			++pG;
+		for(i = 0; i <= p->pA->NL; i++) {
+			fprintf(stderr, "LNetBlock: Port1 Tx[%d] Type = %d\n", i, p->pG[i].B1RLCType);
+			fprintf(stderr, "LNetBlock: Port2 Tx[%d] Type = %d\n", i, p->pG[i].B2RLCType);
 		}
 	}
 
@@ -1217,15 +1226,15 @@ printWires(FILE *pOut)
 	for(i = 0; i < gPointers.pRec1->NW; i++) {
 		pRec2 = gPointers.ppRec2[i];
 
-		fprintf(pOut, "GW %5d %7d ", i + 1, pRec2->WSegs);
+		fprintf(pOut, "GW %5d %8d ", i + 1, pRec2->WSegs);
 
-		fprintf(pOut, "%7g ", pRec2->WEnd1_X / gConvert.xyz);
-		fprintf(pOut, "%7g ", pRec2->WEnd1_Y / gConvert.xyz);
-		fprintf(pOut, "%7g ", pRec2->WEnd1_Z / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd1_X / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd1_Y / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd1_Z / gConvert.xyz);
 
-		fprintf(pOut, "%7g ", pRec2->WEnd2_X / gConvert.xyz);
-		fprintf(pOut, "%7g ", pRec2->WEnd2_Y / gConvert.xyz);
-		fprintf(pOut, "%7g ", pRec2->WEnd2_Z / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd2_X / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd2_Y / gConvert.xyz);
+		fprintf(pOut, "%8g ", pRec2->WEnd2_Z / gConvert.xyz);
 
 		if(pRec2->WDiaGa == (uint16_t)-1) {
 			// There is only one scale factor in the GS card, so
@@ -1233,7 +1242,7 @@ printWires(FILE *pOut)
 			// than wire endpoints.
 			//
 			// NEC wants the radius, hence the divide-by-2.
-			fprintf(pOut, "%7g\n", (pRec2->WireDia / 2.0) / gConvert.xyz);
+			fprintf(pOut, "%8g\n", (pRec2->WireDia / 2.0) / gConvert.xyz);
 		} else {
 			// Calculate the wire diameter in meters, based on AWG
 			// algorithm.  Works for wire GA 0 and thinner.
@@ -1242,11 +1251,11 @@ printWires(FILE *pOut)
 			//
 			// NEC wants the radius, hence the divide-by-2.
 			tmp = 0.005 * pow(92.0, ((36.0 - pRec2->WDiaGa) / 39.0)) * 0.0254;
-			fprintf(pOut, "%7g\n", (tmp / 2.0) / gConvert.xyz);
+			fprintf(pOut, "%8g\n", (tmp / 2.0) / gConvert.xyz);
 		}
 	}
-	fprintf(pOut, "GS %5d %7d %7g\n", 0, 0, gConvert.xyz);
-	fprintf(pOut, "GE\n");
+	fprintf(pOut, "GS %5d %8d %8g\n", 0, 0, gConvert.xyz);
+	fprintf(pOut, "GE %5d %8d\n", 0, 0);
 }
 
 int
@@ -1288,9 +1297,9 @@ printExcitation(FILE *pOut)
 		}
 
 		segNo = segmentNumber(pWire->WSegs, pRec2->SWPct);
-		fprintf(pOut, "EX %5d %7d %7d %7d ", type, wireNo, segNo, 0);
+		fprintf(pOut, "EX %5d %8d %8d %8d ", type, wireNo, segNo, 0);
 
-		fprintf(pOut, "%7g %7g\n",
+		fprintf(pOut, "%8g %8g\n",
 				pRec2->SMP_M * cos(pRec2->SMP_Pdeg * PI / 180.0),
 				pRec2->SMP_M * sin(pRec2->SMP_Pdeg * PI / 180.0));
 	}
@@ -1306,8 +1315,6 @@ printLoads(FILE *pOut)
 	int segNo;
 	int type;
 
-	double v;
-
 	for(i = 0; i < gPointers.pRec1->NL; i++) {
 		pRec2 = gPointers.ppRec2[i];
 		wireNo = pRec2->LWNr;
@@ -1322,8 +1329,8 @@ printLoads(FILE *pOut)
 		segNo = segmentNumber(pWire->WSegs, pRec2->LWPct);
 
 		if(gPointers.pRec1->LType == 'Z') {
-			fprintf(pOut, "LD %5d %7d %7d %7d ", 4, wireNo, segNo, segNo);
-			fprintf(pOut, "%7g %7g\n", pRec2->LZ_R, pRec2->LZ_I);
+			fprintf(pOut, "LD %5d %8d %8d %8d ", 4, wireNo, segNo, segNo);
+			fprintf(pOut, "%8g %8g\n", pRec2->LZ_R, pRec2->LZ_I);
 		} else if(gPointers.pRec1->LType == 'R') {
 			if(pRec2->LConn == 'P') {
 				// Parallel
@@ -1335,11 +1342,282 @@ printLoads(FILE *pOut)
 				type = 0;
 			}
 
-			fprintf(pOut, "LD %5d %7d %7d %7d ", type, wireNo, segNo, segNo);
-			fprintf(pOut, "%7g %7g %7g\n", pRec2->sngR, pRec2->sngL, pRec2->sngC);
+			fprintf(pOut, "LD %5d %8d %8d %8d ", type, wireNo, segNo, segNo);
+			fprintf(pOut, "%8g %8g %8g\n", pRec2->sngR, pRec2->sngL, pRec2->sngC);
 		} else {
 			// Laplace
 		}
+	}
+
+	return 0;
+}
+
+int
+mapVarBlocks()
+{
+	int varStart;
+	int varCount;
+	uint32_t varPosition;
+	int i;
+	BlkHeader *pH;
+	BLOCK *pB;
+	uint32_t start;
+	uint32_t remain;
+	uint32_t need;
+	int foundFS = 0;
+	int foundWI = 0;
+	int foundTL = 0;
+	int foundTX = 0;
+	int foundLN = 0;
+	int foundVS = 0;
+
+	// There is always a single gPointers.pRec1 - that's the first
+	// PRIMARY_BS in the varStart variable.
+	//
+	// Then there are a bunch of pRec2, also PRIMARY_BS bytes each.  NW,
+	// NSrc, NL, NT, NM all ride in the same set of pRec2 blocks - that
+	// is the parenthesized term.
+	//
+	// Then comes pRec3 (second to last PRIMARY_BS), and finally comes
+	// pRec4 (the last PRIMARY_BS).
+	varStart = PRIMARY_BS + (gPointers.pRec1->MaxMWSL * PRIMARY_BS) + PRIMARY_BS + PRIMARY_BS;
+
+	// We don't know how many var blocks there are, so we first have to
+	// scan through the file to get a count.  Then we can allocate pointer
+	// space.
+	varCount = 0;
+	varPosition = varStart;
+	while(varPosition < gInputFileSize) {
+		MAP(pH, BlkHeader, gIMap, varPosition);
+		varCount++;
+		varPosition += pH->BlockLen;
+
+		dumpBlkHeader(pH);
+	}
+	if(Debug_Flag) fprintf(stderr, "varCount = %d, varPosition = %d, gInputFileSize = %d\n",
+			varCount, varPosition, gInputFileSize);
+
+	// Create space for the BLOCK pointers.
+	if((gPointers.ppBlks = malloc(varCount * sizeof(BLOCK *))) == NULL) {
+		fprintf(stderr, "No space to map varblock pointers\n");
+		return -1;
+	}
+
+	// Create the BLOCK structures themselves.
+	for(i = 0; i < varCount; i++) {
+		if((gPointers.ppBlks[i] = malloc(sizeof(BLOCK))) == NULL) {
+			fprintf(stderr, "No space to map varblocks\n");
+			return -1;
+		}
+	}
+
+	// Map the components.
+	varPosition = varStart;
+	for(i = 0; i < varCount; i++) {
+		MAP(pH, BlkHeader, gIMap, varPosition);
+		start = varPosition + sizeof(BlkHeader);
+		remain = pH->BlockLen - sizeof(BlkHeader);
+
+		pB = gPointers.ppBlks[i];
+		pB->pH = pH;
+		switch(pH->BlockType) {
+			case VB_FREQ_SWEEP:
+				if(foundFS) {
+					fprintf(stderr, "Duplicate VB_FREQ_SWEEP - replacing!\n");
+				}
+				++foundFS;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pFSB, FreqSweepBlk, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				dumpFreqSweepBlock(pH, pB->u.pFSB);
+				break;
+
+			case VB_WIRE_INS:
+				if(foundWI) {
+					fprintf(stderr, "Duplicate VB_WIRE_INS - replacing!\n");
+				}
+				++foundWI;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pWIB, WireInsBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				dumpWireInsBlock(pH, pB->u.pWIB);
+				break;
+
+			case VB_TL_LOSS:
+				if(foundTL) {
+					fprintf(stderr, "Duplicate VB_TL_LOSS - replacing!\n");
+				}
+				++foundTL;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pTLLB, TLineLossBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				dumpTLineLossBlock(pH, pB->u.pTLLB);
+				break;
+
+			case VB_TRANSFORMER:
+				if(foundTX) {
+					fprintf(stderr, "Duplicate VB_TRANSFORMER - replacing!\n");
+				}
+				++foundTX;
+
+				// The A component is fixed length.
+				need = sizeof(TransformerBlockA);
+				VMAP(pB->u.TB.pA, TransformerBlockA, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				// The B, C, and D components are variable
+				// length.  Calculate the sizes.  There is
+				// one extra (dummy/reserved) block at the
+				// start of each, hence the "1 +".
+				need = (1 + pB->u.TB.pA->NX) * sizeof(TransformerBlockB);
+				VMAP(pB->u.TB.pB, TransformerBlockB, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				need = (1 + pB->u.TB.pA->NX) * sizeof(TransformerBlockC);
+				VMAP(pB->u.TB.pC, TransformerBlockC, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				need = (1 + pB->u.TB.pA->NX) * sizeof(TransformerBlockD);
+				VMAP(pB->u.TB.pD, TransformerBlockD, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				dumpTransformerBlock(pH, &pB->u.TB);
+				break;
+
+			case VB_L_NETWORK:
+				if(foundLN) {
+					fprintf(stderr, "Duplicate VB_L_NETWORK - replacing!\n");
+				}
+				++foundLN;
+				// The A component is fixed length.
+				need = sizeof(LNetBlockA);
+				VMAP(pB->u.LNB.pA, LNetBlockA, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				// The B, C, and D components are variable
+				// length.  Calculate the sizes.  There is
+				// one extra (dummy/reserved) block at the
+				// start of each, hence the "1 +".
+				need = (1 + pB->u.LNB.pA->NL) * sizeof(LNetBlockB);
+				VMAP(pB->u.LNB.pB, LNetBlockB, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				need = (1 + pB->u.LNB.pA->NL) * sizeof(LNetBlockC);
+				VMAP(pB->u.LNB.pC, LNetBlockC, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				need = (1 + pB->u.LNB.pA->NL) * sizeof(LNetBlockD);
+				VMAP(pB->u.LNB.pD, LNetBlockD, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				// The E component is fixed length.
+				need = sizeof(LNetBlockE);
+				VMAP(pB->u.LNB.pE, LNetBlockE, gIMap, start, need);
+				start += need;
+				remain -= need;
+
+				if(pB->u.LNB.pE->NrRLC) {
+					// These last two blocks are optional.
+
+					// The F and D components are variable
+					// length.  Calculate the sizes.  There is
+					// one extra (dummy/reserved) block at the
+					// start of each, hence the "1 +".
+					need = (1 + pB->u.LNB.pA->NL) * sizeof(LNetBlockF);
+					VMAP(pB->u.LNB.pF, LNetBlockF, gIMap, start, need);
+					start += need;
+					remain -= need;
+
+					// There is one extra (dummy/reserved) block at the start,
+					// hence the "1 +".
+					need = (1 + pB->u.LNB.pA->NL) * sizeof(LNetBlockG);
+					VMAP(pB->u.LNB.pG, LNetBlockG, gIMap, start, need);
+					start += need;
+					remain -= need;
+				} else {
+					pB->u.LNB.pF = 0;
+					pB->u.LNB.pG = 0;
+				}
+
+				dumpLNetBlock(pH, &pB->u.LNB);
+				break;
+
+			case VB_VIRTUAL_SEG:
+				if(foundVS) {
+					fprintf(stderr, "Duplicate VB_VIRTUAL_SEG - replacing!\n");
+				}
+				++foundVS;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pVSB, VirtSegmentBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				dumpVirtSegmentBlock(pH, pB->u.pVSB);
+				break;
+
+			case VB_Y_PARAM:
+			case VB_PLANE_WAVE_SRC:
+			default:
+				// Ignore - we don't know what this is.
+				break;
+		}
+
+		varPosition += pH->BlockLen;
+	}
+}
+
+int
+printTransmissionLines(FILE *pOut)
+{
+	int i;
+	RecType2 *pRec2;
+	RecType2 *pWire;
+	int wireNo;
+	int segNo;
+	int type;
+
+	for(i = 0; i < gPointers.pRec1->NT; i++) {
+		pRec2 = gPointers.ppRec2[i];
+		wireNo = pRec2->LWNr;
+
+		// For a shorted line, we have to add a dummy wire.  I'm not
+		// sure how to model an open line.
+		if(pRec2->TLWNr1 == (uint16_t)-1) {
+			if(Debug_Flag) fprintf(stderr, "End 1 = Short, ");
+		} else if(pRec2->TLWNr1 = (uint16_t)-2) {
+			if(Debug_Flag) fprintf(stderr, "End 1 = Open, ");
+		} else {
+			if(Debug_Flag) fprintf(stderr, "End 1 at wire %d, %10.6f %%", pRec2->TLWNr1, pRec2->TLWPct1);
+		}
+
+		if(pRec2->TLWNr2 == (uint16_t)-1) {
+			if(Debug_Flag) fprintf(stderr, "End 2 = Short, ");
+		} else if(pRec2->TLWNr2 = (uint16_t)-2) {
+			if(Debug_Flag) fprintf(stderr, "End 2 = Open, ");
+		} else {
+			if(Debug_Flag) fprintf(stderr, "End 2 at wire %d, %10.6f %%", pRec2->TLWNr2, pRec2->TLWPct2);
+		}
+
+		if(pRec2->TLLen > 0) {
+			if(Debug_Flag) fprintf(stderr, "TL Length %10.6f, ", pRec2->TLLen / gConvert.xyz);
+		} else if(pRec2->TLLen < 0) {
+			if(Debug_Flag) fprintf(stderr, "TL Length %10.6f d, ", -pRec2->TLLen);
+		} else {
+			if(Debug_Flag) fprintf(stderr, "TL Length actual distance, ");
+		}
+
+		if(pRec2->TLZ0 >= 0) {
+			if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f N, ", pRec2->TLZ0);
+		} else {
+			if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f R, ", -pRec2->TLZ0);
+		}
+		if(Debug_Flag) fprintf(stderr, "TL VF %10.6f, ", pRec2->TLVF);
 	}
 }
 
@@ -1381,9 +1659,7 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	uint32_t currentPosition;
        	uint32_t BytePosStartBlocks;
-	char *mySType[] = { "V", "I", "SV", "SI" };
 	char *Config[] = { "Ser", "Par", "Trap"};
-	char *ExtConn[] = { "Ser", "Par" };
 	int optRjXb;
 	uint32_t cboGtypeLI;
 	uint32_t cboWireLossLI;
@@ -1395,9 +1671,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	int optMedia2Radial;
 	uint32_t cboGchar2LI;
 
-	int WireCnt;
-	int SrcOff;
-	int MaxedOutSLT;
 	int rv;
 	int TLOff;
 	struct stat sb;
@@ -1442,62 +1715,17 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	// Map all the RecType2 blocks.
 	mapRecType2();
 
+	// Map all variable-length blocks.
+	mapVarBlocks();
+
 	printWires(pOut);
 
 	printExcitation(pOut);
 
 	printLoads(pOut);
 
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Find Transmission Lines                                                  @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
+	printTransmissionLines(pOut);
 
-	if(Debug_Flag) fprintf(stderr, "Number of transmission lines = %d\n", gPointers.pRec1->NT);
-	if(gPointers.pRec1->NT > 0) {
-		currentPosition = PRIMARY_BS;
-		for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
-			MAP(pRec2, RecType2, gIMap, currentPosition);
-
-			dumpRecType2(pRec2);
-
-			if(pRec2->TLWNr1 == (uint16_t)-1) {
-				if(Debug_Flag) fprintf(stderr, "End 1 = Short, ");
-			} else if(pRec2->TLWNr1 = (uint16_t)-2) {
-				if(Debug_Flag) fprintf(stderr, "End 1 = Open, ");
-			} else {
-				if(Debug_Flag) fprintf(stderr, "End 1 at wire %d, %10.6f %%", pRec2->TLWNr1, pRec2->TLWPct1);
-			}
-
-			if(pRec2->TLWNr2 == (uint16_t)-1) {
-				if(Debug_Flag) fprintf(stderr, "End 2 = Short, ");
-			} else if(pRec2->TLWNr2 = (uint16_t)-2) {
-				if(Debug_Flag) fprintf(stderr, "End 2 = Open, ");
-			} else {
-				if(Debug_Flag) fprintf(stderr, "End 2 at wire %d, %10.6f %%", pRec2->TLWNr2, pRec2->TLWPct2);
-			}
-
-			if(pRec2->TLLen > 0) {
-				if(Debug_Flag) fprintf(stderr, "TL Length %10.6f, ", pRec2->TLLen / gConvert.xyz);
-			} else if(pRec2->TLLen < 0) {
-				if(Debug_Flag) fprintf(stderr, "TL Length %10.6f d, ", -pRec2->TLLen);
-			} else {
-				if(Debug_Flag) fprintf(stderr, "TL Length actual distance, ");
-			}
-
-			if(pRec2->TLZ0 >= 0) {
-				if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f N, ", pRec2->TLZ0);
-			} else {
-				if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f R, ", -pRec2->TLZ0);
-			}
-			if(Debug_Flag) fprintf(stderr, "TL VF %10.6f, ", pRec2->TLVF);
-
-			// Move to the next block.
-			currentPosition += PRIMARY_BS;
-		}
-		if(Debug_Flag) fprintf(stderr, "\n");
-	}
 
 	if(Debug_Flag) fprintf(stderr, "\n");
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
@@ -1505,6 +1733,15 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "\n");
 
+	// REzT1.Gtype is ground type:
+	// F = free space
+	// P = perfect
+	// R = real
+	// if real, then also look at REzT1.GAnal where:
+	// H or F means somerfield
+	// otherwise MININEC
+	// We cannot do mininec, so there is probably no advantage to
+	// looking at REzT1.GAnal
 	switch(gPointers.pRec1->Gtype) {
 		case 'F':
 			cboGtypeLI = 0;
@@ -1523,8 +1760,13 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 			}
 	}
 
-	// I think this is trying to find the wire type.  For now, just print the
+	// I think this is trying to find the wire loss.  For now, just print the
 	// raw values.
+	//
+	// I suspect 4nec2 turns this into LD cards.
+	//
+	// There was a type 13 block that might have had this, but Dan doesn't use
+	// it.
 	//
 	// cboWireLossLI = wsf.Match(wsf.Round(gPointers.pRec1->WRho, 10), .[WireRhos], 0) - 1
 	// If Err.Number > 0 Then cboWireLossLI = 5
@@ -1844,7 +2086,7 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 				start += need;
 				remain -= need;
 
-				dumpTransformerBlock(pHdr, pBlk15A, pBlk15B, pBlk15C, pBlk15D);
+				//dumpTransformerBlock(pHdr, pBlk15A, pBlk15B, pBlk15C, pBlk15D);
 
 				++pBlk15B; // Skip the dummy
 				for(XfmrOff = 1; XfmrOff <= pBlk15A->NX; XfmrOff++) {
@@ -1965,7 +2207,7 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 					pBlk17G = 0;
 				}
 
-				dumpLNetBlock(pHdr, pBlk17A, pBlk17B, pBlk17C, pBlk17D, pBlk17E, pBlk17F, pBlk17G);
+				//dumpLNetBlock(pHdr, pBlk17A, pBlk17B, pBlk17C, pBlk17D, pBlk17E, pBlk17F, pBlk17G);
 
 				for(LnetOff = 1; LnetOff <= pBlk17A->NL; LnetOff++) {
 					if(Debug_Flag) fprintf(stderr, "P1WNr %d, ", pBlk17B[LnetOff].P1WNr);
