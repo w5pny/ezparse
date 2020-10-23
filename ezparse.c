@@ -468,6 +468,7 @@ POINTERS		gPointers;			// Pointers to all records and blocks.
 CONVERSION_FACTORS	gConvert;			// Conversion factors
 double			gFrequency;			// Frequency in MHz
 int			gVarCount;			// Number of variable-length blocks
+int			gNecVersion;			// NEC version (2 or 4)
 
 FreqSweepBlk		*gpFSB;				// Single component
 WireInsBlock		*gpWIB;				// Single component
@@ -1597,6 +1598,53 @@ printLoads(FILE *pOut)
 int
 printGrounds(FILE *pOut)
 {
+	int type;
+	RecType2 *pRec2;
+
+	// Gtype is ground type:
+	//
+	// F = free space
+	// P = perfect
+	// R = real
+	//
+	// If real, then also look at GAnal where:
+	//
+	// H (or F) means Sommerfeld
+	// M means MININEC
+	//
+	// We cannot do MININEC, so there is no advantage to
+	// looking at GAnal
+	//
+	// There are two Sommerfeld methods, and we always
+	// pick the higher quality one if we have the NEC 4
+	// engine available.
+	switch(gPointers.pRec1->Gtype) {
+		case 'F':
+			type = 0;
+			break;
+
+		case 'P':
+			type = 1;
+			break;
+
+		case 'R':
+			type = 2;
+			if(gNecVersion == 4) {
+				type = 3;
+			}
+			break;
+	}
+
+	pRec2 = gPointers.ppRec2[0];
+
+	fprintf(pOut, "GN %5d %8d %8d %8d ", type, gPointers.pRec1->NR, 0, 0);
+	fprintf(pOut, "%8g %8g\n", pRec2->MEps, pRec2->MSigma);
+
+	if(gPointers.pRec1->Gtype == 'R') {
+		if(gPointers.pRec1->NM == 2) {
+			// FIXME radials, second ground medium
+		}
+	}
 }
 
 int
@@ -1733,95 +1781,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	printTransmissionLines(pOut);
 
 	printGrounds(pOut);
-
-	if(Debug_Flag) fprintf(stderr, "\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "@@ Find Ground Media                                                        @@\n");
-	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	if(Debug_Flag) fprintf(stderr, "\n");
-
-	// REzT1.Gtype is ground type:
-	// F = free space
-	// P = perfect
-	// R = real
-	// if real, then also look at REzT1.GAnal where:
-	// H or F means somerfield
-	// otherwise MININEC
-	// We cannot do mininec, so there is probably no advantage to
-	// looking at REzT1.GAnal
-	switch(gPointers.pRec1->Gtype) {
-		case 'F':
-			cboGtypeLI = 0;
-			break;
-		case 'P':
-			cboGtypeLI = 1;
-			break;
-		case 'R':
-			switch(gPointers.pRec1->GAnal) {
-				case 'H':
-				case 'F':
-					cboGtypeLI = 2;
-					break;
-				default:
-					cboGtypeLI = 3;
-			}
-	}
-
-	// I think this is trying to find the wire loss.  For now, just print the
-	// raw values.
-	//
-	// I suspect 4nec2 turns this into LD cards.
-	//
-	// There was a type 13 block that might have had this, but Dan doesn't use
-	// it.
-	//
-	// cboWireLossLI = wsf.Match(wsf.Round(gPointers.pRec1->WRho, 10), .[WireRhos], 0) - 1
-	// If Err.Number > 0 Then cboWireLossLI = 5
-	// .Range("N6").Value = gPointers.pRec1->WRho
-	// .Range("O6").Value = gPointers.pRec1->WMu
-	// Rho should be resistivity and Mu should be permeability.  But I'd
-	// expect these to be on a load basis rather than global.
-	if(Debug_Flag) fprintf(stderr, "WRho %g, ", gPointers.pRec1->WRho);
-	if(Debug_Flag) fprintf(stderr, "WMu %g\n", gPointers.pRec1->WMu);
-
-	if(gPointers.pRec1->Gtype == 'R') {
-
-		// Skip over the gPointers.pRec1 block so we can look at the first pRec2 block.
-		currentPosition = PRIMARY_BS;
-		MAP(pRec2, RecType2, gIMap, currentPosition);
-
-		dumpRecType2(pRec2);
-
-		// cboGcharLI = wsf.Match(wsf.Round(pRec2->MEps + pRec2->MSigma, 4), .[GndCharCombo], 0) - 1
-		// If Err.Number > 0 Then cboGcharLI = 11
-		// .Range("N4").Value = pRec2->MSigma
-		// .Range("O4").Value = pRec2->MEps
-		if(Debug_Flag) fprintf(stderr, "MSigma %g, ", pRec2->MSigma);
-		if(Debug_Flag) fprintf(stderr, "MEps %g\n", pRec2->MEps);
-
-		if(gPointers.pRec1->NM == 2) {
-			chkMedia2 = true;
-
-			// Skip over the gPointers.pRec1 block and the first pRec2 block so we
-			// can look at the second pRec2 block.
-			currentPosition = PRIMARY_BS + PRIMARY_BS;
-			MAP(pRec2, RecType2, gIMap, currentPosition);
-
-			dumpRecType2(pRec2);
-
-			// cboGchar2LI = wsf.Match(wsf.Round(pRec2->MEps + pRec2->MSigma, 4), .[GndCharCombo], 0) - 1
-			// If Err.Number > 0 Then
-			// cboGchar2LI = 4
-			// End If
-			// .Range("Q5").Value = RoundSig(CDbl(CStr(pRec2->MHt)) / gConvert.xyz, 7)
-			// .Range("R5").Value = RoundSig(CDbl(CStr(pRec2->MCoord)) / gConvert.xyz, 7)
-			if(Debug_Flag) fprintf(stderr, "MHt %g, ", pRec2->MHt);
-			if(Debug_Flag) fprintf(stderr, "MCoord %g\n", pRec2->MCoord);
-			if(gPointers.pRec1->BdryType == 'R') {
-			       	optMedia2Radial = true;
-			}
-		}
-	}
 
 	if(gPointers.pRec1->PType == '3') {
 		cboPtypeLI = 1;
@@ -2026,12 +1985,15 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 void
 usage(char *prog)
 {
-	fprintf(stderr, "%s -d -i input_file -o output_file\n", prog);
+	fprintf(stderr, "%s -d -i input_file -o output_file -n nec_version\n", prog);
 	fprintf(stderr, "\n");
 	fprintf(stderr, "You can provide the input_file with or without the -i\n");
 	fprintf(stderr, "\n");
 	fprintf(stderr, "If you don't specify an output_file, then output will\n");
 	fprintf(stderr, "go to the terminal\n");
+	fprintf(stderr, "\n");
+	fprintf(stderr, "nec_version can be 2 or 4.  This influences various\n");
+	fprintf(stderr, "card generation parameters.\n");
 }
 
 int
@@ -2044,7 +2006,9 @@ main(
 	char *pInput = 0;
 	char *pOutput = 0;
 
-	while((opt = getopt(argc, argv, "di:o:")) != -1) {
+	gNecVersion = 2; // default
+
+	while((opt = getopt(argc, argv, "di:o:n:")) != -1) {
 		switch(opt) {
 			case 'd':
 				Debug_Flag = 1;
@@ -2056,6 +2020,15 @@ main(
 
 			case 'o':
 				pOutput = optarg;
+				break;
+
+			case 'n':
+				gNecVersion = atoi(optarg);
+				if(gNecVersion != 2 && gNecVersion != 4) {
+					fprintf(stderr, "Invalid NEC version\n\n");
+					usage(argv[0]);
+					exit(1);
+				}
 				break;
 
 			default: /* '?' */
