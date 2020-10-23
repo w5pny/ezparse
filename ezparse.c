@@ -535,36 +535,36 @@ dumpRecType1(RecType1 *p)
 	fprintf(stderr, "RecType1: OldMaxMWSL = %d\n", p->OldMaxMWSL);
 	fprintf(stderr, "RecType1: NM = %d\n", p->NM);
 	fprintf(stderr, "RecType1: BdryType = %c\n", p->BdryType);
-	fprintf(stderr, "RecType1: FMHz = %f\n", (double)p->FMHz);
+	fprintf(stderr, "RecType1: FMHz = %g\n", (double)p->FMHz);
 	fprintf(stderr, "RecType1: OldPType = %d\n", p->OldPType);
-	fprintf(stderr, "RecType1: Pangle = %f\n", (double)p->Pangle);
-	fprintf(stderr, "RecType1: PStep = %f\n", (double)p->PStep);
+	fprintf(stderr, "RecType1: Pangle = %g\n", (double)p->Pangle);
+	fprintf(stderr, "RecType1: PStep = %g\n", (double)p->PStep);
 	fprintf(stderr, "RecType1: Title = "); printStr(p->Title, TITLE_LEN);
 	fprintf(stderr, "RecType1: OldNW = %d\n", p->OldNW);
 	fprintf(stderr, "RecType1: NSrc = %d\n", p->NSrc);
 	fprintf(stderr, "RecType1: NL = %d\n", p->NL);
 	fprintf(stderr, "RecType1: Gtype = %d\n", p->Gtype);
 	fprintf(stderr, "RecType1: NR = %d\n", p->NR);
-	fprintf(stderr, "RecType1: RDia = %f\n", (double)p->RDia);
+	fprintf(stderr, "RecType1: RDia = %g\n", (double)p->RDia);
 	fprintf(stderr, "RecType1: RDiaGa = %d\n", p->RDiaGa);
 	fprintf(stderr, "RecType1: Ck = %d\n", p->Ck);
 	fprintf(stderr, "RecType1: Units = %d\n", p->Units);
 	fprintf(stderr, "RecType1: PRange = %d\n", p->PRange);
 	fprintf(stderr, "RecType1: OldPPol = %d\n", p->OldPPol);
-	fprintf(stderr, "RecType1: ORdb = %f\n", (double)p->ORdb);
-	fprintf(stderr, "RecType1: PStart = %f\n", (double)p->PStart);
-	fprintf(stderr, "RecType1: PEnd = %f\n", (double)p->PEnd);
+	fprintf(stderr, "RecType1: ORdb = %g\n", (double)p->ORdb);
+	fprintf(stderr, "RecType1: PStart = %g\n", (double)p->PStart);
+	fprintf(stderr, "RecType1: PEnd = %g\n", (double)p->PEnd);
 	fprintf(stderr, "RecType1: OldLType = %d\n", p->OldLType);
-	fprintf(stderr, "RecType1: GWDist = %f\n", (double)p->GWDist);
-	fprintf(stderr, "RecType1: GWZ = %f\n", (double)p->GWZ);
+	fprintf(stderr, "RecType1: GWDist = %g\n", (double)p->GWDist);
+	fprintf(stderr, "RecType1: GWZ = %g\n", (double)p->GWZ);
 	fprintf(stderr, "RecType1: LNetType = %d\n", p->LNetType);
-	fprintf(stderr, "RecType1: AnalRes = %f\n", (double)p->AnalRes);
-	fprintf(stderr, "RecType1: RefdB = %f\n", (double)p->RefdB);
-	fprintf(stderr, "RecType1: WRho = %f\n", (double)p->WRho);
-	fprintf(stderr, "RecType1: WMu = %f\n", (double)p->WMu);
+	fprintf(stderr, "RecType1: AnalRes = %g\n", (double)p->AnalRes);
+	fprintf(stderr, "RecType1: RefdB = %g\n", (double)p->RefdB);
+	fprintf(stderr, "RecType1: WRho = %g\n", (double)p->WRho);
+	fprintf(stderr, "RecType1: WMu = %g\n", (double)p->WMu);
 	fprintf(stderr, "RecType1: NP = %d\n", p->NP);
 	fprintf(stderr, "RecType1: ArrayFiles = %d\n", p->ArrayFiles);
-	fprintf(stderr, "RecType1: SWRZ0 = %f\n", (double)p->SWRZ0);
+	fprintf(stderr, "RecType1: SWRZ0 = %g\n", (double)p->SWRZ0);
 	fprintf(stderr, "RecType1: VerCode = %d\n", p->VerCode);
 	fprintf(stderr, "RecType1: DiaUnits = %d\n", p->DiaUnits);
 	fprintf(stderr, "RecType1: LType = %d\n", p->LType);
@@ -574,11 +574,11 @@ dumpRecType1(RecType1 *p)
 	fprintf(stderr, "RecType1: GAnal = %d\n", p->GAnal);
 	fprintf(stderr, "RecType1: MaxMWSL = %d\n", p->MaxMWSL);
 	fprintf(stderr, "RecType1: NW = %d\n", p->NW);
-	fprintf(stderr, "RecType1: dBSum = %f\n", (double)p->dBSum);
-	fprintf(stderr, "RecType1: PStep3D = %f\n", (double)p->PStep3D);
+	fprintf(stderr, "RecType1: dBSum = %g\n", (double)p->dBSum);
+	fprintf(stderr, "RecType1: PStep3D = %g\n", (double)p->PStep3D);
 	fprintf(stderr, "RecType1: MiscFlags = %d\n", p->MiscFlags);
 	fprintf(stderr, "RecType1: PgmVerCode = %d\n", p->PgmVerCode);
-	fprintf(stderr, "RecType1: LinRange2D = %f\n", (double)p->LinRange2D);
+	fprintf(stderr, "RecType1: LinRange2D = %g\n", (double)p->LinRange2D);
 	fprintf(stderr, "RecType1: NX = %d\n", p->NX);
 	fprintf(stderr, "RecType1: NN = %d\n", p->NN);
 	fprintf(stderr, "RecType1: NLNet = %d\n", p->NLNet);
@@ -607,54 +607,54 @@ dumpRecType2(RecType2 *p)
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	fprintf(stderr, "\n");
 
-	fprintf(stderr, "RecType2: MSigma = %f\n", (double)p->MSigma);
-	fprintf(stderr, "RecType2: MEps = %f\n", (double)p->MEps);
-	fprintf(stderr, "RecType2: MCoord = %f\n", (double)p->MCoord);
-	fprintf(stderr, "RecType2: MHt = %f\n", (double)p->MHt);
-	fprintf(stderr, "RecType2: WEnd1_X = %f\n", (double)p->WEnd1_X);
-	fprintf(stderr, "RecType2: WEnd1_Y = %f\n", (double)p->WEnd1_Y);
-	fprintf(stderr, "RecType2: WEnd1_Z = %f\n", (double)p->WEnd1_Z);
-	fprintf(stderr, "RecType2: WEnd2_X = %f\n", (double)p->WEnd2_X);
-	fprintf(stderr, "RecType2: WEnd2_Y = %f\n", (double)p->WEnd2_Y);
-	fprintf(stderr, "RecType2: WEnd2_Z = %f\n", (double)p->WEnd2_Z);
-	fprintf(stderr, "RecType2: WireDia = %f\n", (double)p->WireDia);
+	fprintf(stderr, "RecType2: MSigma = %g\n", (double)p->MSigma);
+	fprintf(stderr, "RecType2: MEps = %g\n", (double)p->MEps);
+	fprintf(stderr, "RecType2: MCoord = %g\n", (double)p->MCoord);
+	fprintf(stderr, "RecType2: MHt = %g\n", (double)p->MHt);
+	fprintf(stderr, "RecType2: WEnd1_X = %g\n", (double)p->WEnd1_X);
+	fprintf(stderr, "RecType2: WEnd1_Y = %g\n", (double)p->WEnd1_Y);
+	fprintf(stderr, "RecType2: WEnd1_Z = %g\n", (double)p->WEnd1_Z);
+	fprintf(stderr, "RecType2: WEnd2_X = %g\n", (double)p->WEnd2_X);
+	fprintf(stderr, "RecType2: WEnd2_Y = %g\n", (double)p->WEnd2_Y);
+	fprintf(stderr, "RecType2: WEnd2_Z = %g\n", (double)p->WEnd2_Z);
+	fprintf(stderr, "RecType2: WireDia = %g\n", (double)p->WireDia);
 	fprintf(stderr, "RecType2: WDiaGa = %d\n", p->WDiaGa);
 	fprintf(stderr, "RecType2: WSegs = %d\n", p->WSegs);
 	fprintf(stderr, "RecType2: SWNr = %d\n", p->SWNr);
-	fprintf(stderr, "RecType2: SWPct = %f\n", (double)p->SWPct);
-	fprintf(stderr, "RecType2: SMP_M = %f\n", (double)p->SMP_M);
-	fprintf(stderr, "RecType2: SMP_Pdeg = %f\n", (double)p->SMP_Pdeg);
+	fprintf(stderr, "RecType2: SWPct = %g\n", (double)p->SWPct);
+	fprintf(stderr, "RecType2: SMP_M = %g\n", (double)p->SMP_M);
+	fprintf(stderr, "RecType2: SMP_Pdeg = %g\n", (double)p->SMP_Pdeg);
 	fprintf(stderr, "RecType2: Stype = %d\n", p->Stype);
 	fprintf(stderr, "RecType2: LWNr = %d\n", p->LWNr);
-	fprintf(stderr, "RecType2: LWPct = %f\n", (double)p->LWPct);
-	fprintf(stderr, "RecType2: LZ_R = %f\n", (double)p->LZ_R);
-	fprintf(stderr, "RecType2: LZ_I = %f\n", (double)p->LZ_I);
-	fprintf(stderr, "RecType2: LNum_S0 = %f\n", (double)p->LNum_S0);
-	fprintf(stderr, "RecType2: LNum_S1 = %f\n", (double)p->LNum_S1);
-	fprintf(stderr, "RecType2: LNum_S2 = %f\n", (double)p->LNum_S2);
-	fprintf(stderr, "RecType2: LNum_S3 = %f\n", (double)p->LNum_S3);
-	fprintf(stderr, "RecType2: LNum_S4 = %f\n", (double)p->LNum_S4);
-	fprintf(stderr, "RecType2: LNum_S5 = %f\n", (double)p->LNum_S5);
-	fprintf(stderr, "RecType2: LDen_S0 = %f\n", (double)p->LDen_S0);
-	fprintf(stderr, "RecType2: LDen_S1 = %f\n", (double)p->LDen_S1);
-	fprintf(stderr, "RecType2: LDen_S2 = %f\n", (double)p->LDen_S2);
-	fprintf(stderr, "RecType2: LDen_S3 = %f\n", (double)p->LDen_S3);
-	fprintf(stderr, "RecType2: LDen_S4 = %f\n", (double)p->LDen_S4);
-	fprintf(stderr, "RecType2: LDen_S5 = %f\n", (double)p->LDen_S5);
+	fprintf(stderr, "RecType2: LWPct = %g\n", (double)p->LWPct);
+	fprintf(stderr, "RecType2: LZ_R = %g\n", (double)p->LZ_R);
+	fprintf(stderr, "RecType2: LZ_I = %g\n", (double)p->LZ_I);
+	fprintf(stderr, "RecType2: LNum_S0 = %g\n", (double)p->LNum_S0);
+	fprintf(stderr, "RecType2: LNum_S1 = %g\n", (double)p->LNum_S1);
+	fprintf(stderr, "RecType2: LNum_S2 = %g\n", (double)p->LNum_S2);
+	fprintf(stderr, "RecType2: LNum_S3 = %g\n", (double)p->LNum_S3);
+	fprintf(stderr, "RecType2: LNum_S4 = %g\n", (double)p->LNum_S4);
+	fprintf(stderr, "RecType2: LNum_S5 = %g\n", (double)p->LNum_S5);
+	fprintf(stderr, "RecType2: LDen_S0 = %g\n", (double)p->LDen_S0);
+	fprintf(stderr, "RecType2: LDen_S1 = %g\n", (double)p->LDen_S1);
+	fprintf(stderr, "RecType2: LDen_S2 = %g\n", (double)p->LDen_S2);
+	fprintf(stderr, "RecType2: LDen_S3 = %g\n", (double)p->LDen_S3);
+	fprintf(stderr, "RecType2: LDen_S4 = %g\n", (double)p->LDen_S4);
+	fprintf(stderr, "RecType2: LDen_S5 = %g\n", (double)p->LDen_S5);
 	fprintf(stderr, "RecType2: TLWNr1 = %d\n", p->TLWNr1);
-	fprintf(stderr, "RecType2: TLWPct1 = %f\n", (double)p->TLWPct1);
+	fprintf(stderr, "RecType2: TLWPct1 = %g\n", (double)p->TLWPct1);
 	fprintf(stderr, "RecType2: TLWNr2 = %d\n", p->TLWNr2);
-	fprintf(stderr, "RecType2: TLWPct2 = %f\n", (double)p->TLWPct2);
-	fprintf(stderr, "RecType2: TLZ0 = %f\n", (double)p->TLZ0);
-	fprintf(stderr, "RecType2: TLLen = %f\n", (double)p->TLLen);
-	fprintf(stderr, "RecType2: TLVF = %f\n", (double)p->TLVF);
+	fprintf(stderr, "RecType2: TLWPct2 = %g\n", (double)p->TLWPct2);
+	fprintf(stderr, "RecType2: TLZ0 = %g\n", (double)p->TLZ0);
+	fprintf(stderr, "RecType2: TLLen = %g\n", (double)p->TLLen);
+	fprintf(stderr, "RecType2: TLVF = %g\n", (double)p->TLVF);
 	fprintf(stderr, "RecType2: LConn = %d\n", p->LConn);
 	fprintf(stderr, "RecType2: strRLCType = %d\n", p->strRLCType);
-	fprintf(stderr, "RecType2: sngR = %f\n", (double)p->sngR);
-	fprintf(stderr, "RecType2: sngL = %f\n", (double)p->sngL);
-	fprintf(stderr, "RecType2: sngC = %f\n", (double)p->sngC);
-	fprintf(stderr, "RecType2: sngRFreqMHz = %f\n", (double)p->sngRFreqMHz);
-	//fprintf(stderr, "RecType2: Reserved[3] = %f\n", (double)p->Reserved[3]);
+	fprintf(stderr, "RecType2: sngR = %g\n", (double)p->sngR);
+	fprintf(stderr, "RecType2: sngL = %g\n", (double)p->sngL);
+	fprintf(stderr, "RecType2: sngC = %g\n", (double)p->sngC);
+	fprintf(stderr, "RecType2: sngRFreqMHz = %g\n", (double)p->sngRFreqMHz);
+	//fprintf(stderr, "RecType2: Reserved[3] = %g\n", (double)p->Reserved[3]);
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
@@ -678,16 +678,16 @@ dumpRecType3(RecType3 *p)
 
 	fprintf(stderr, "RecType3: NFType = %d\n", p->NFType);
 	fprintf(stderr, "RecType3: NFCoordType = %d\n", p->NFCoordType);
-	fprintf(stderr, "RecType3: NF1Start = %f\n", (double)p->NF1Start);
-	fprintf(stderr, "RecType3: NF1Stop = %f\n", (double)p->NF1Stop);
-	fprintf(stderr, "RecType3: NF1Step = %f\n", (double)p->NF1Step);
-	fprintf(stderr, "RecType3: NF2Start = %f\n", (double)p->NF2Start);
-	fprintf(stderr, "RecType3: NF2Stop = %f\n", (double)p->NF2Stop);
-	fprintf(stderr, "RecType3: NF2Step = %f\n", (double)p->NF2Step);
-	fprintf(stderr, "RecType3: NF3Start = %f\n", (double)p->NF3Start);
-	fprintf(stderr, "RecType3: NF3Stop = %f\n", (double)p->NF3Stop);
-	fprintf(stderr, "RecType3: NF3Step = %f\n", (double)p->NF3Step);
-	//fprintf(stderr, "RecType3: Reserved[132] = %f\n", (double)p->Reserved[132]);
+	fprintf(stderr, "RecType3: NF1Start = %g\n", (double)p->NF1Start);
+	fprintf(stderr, "RecType3: NF1Stop = %g\n", (double)p->NF1Stop);
+	fprintf(stderr, "RecType3: NF1Step = %g\n", (double)p->NF1Step);
+	fprintf(stderr, "RecType3: NF2Start = %g\n", (double)p->NF2Start);
+	fprintf(stderr, "RecType3: NF2Stop = %g\n", (double)p->NF2Stop);
+	fprintf(stderr, "RecType3: NF2Step = %g\n", (double)p->NF2Step);
+	fprintf(stderr, "RecType3: NF3Start = %g\n", (double)p->NF3Start);
+	fprintf(stderr, "RecType3: NF3Stop = %g\n", (double)p->NF3Stop);
+	fprintf(stderr, "RecType3: NF3Step = %g\n", (double)p->NF3Step);
+	//fprintf(stderr, "RecType3: Reserved[132] = %g\n", (double)p->Reserved[132]);
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
@@ -746,9 +746,9 @@ dumpFreqSweepBlock(BlkHeader *pH, FreqSweepBlk *p)
 	fprintf(stderr, "FreqSweepBlk: DFLen = %d\n", p->DFLen);
 	fprintf(stderr, "FreqSweepBlk: AFLen = %d\n", p->AFLen);
 	fprintf(stderr, "FreqSweepBlk: Flags = %d\n", p->Flags);
-	fprintf(stderr, "FreqSweepBlk: FStart = %f\n", (double)p->FStart);
-	fprintf(stderr, "FreqSweepBlk: FStop = %f\n", (double)p->FStop);
-	fprintf(stderr, "FreqSweepBlk: FStep = %f\n", (double)p->FStep);
+	fprintf(stderr, "FreqSweepBlk: FStart = %g\n", (double)p->FStart);
+	fprintf(stderr, "FreqSweepBlk: FStop = %g\n", (double)p->FStop);
+	fprintf(stderr, "FreqSweepBlk: FStep = %g\n", (double)p->FStep);
 
 	// Determine how many bytes are left in the block, after we remove
 	// the header and the above fields.
@@ -837,9 +837,9 @@ dumpWireInsBlock(BlkHeader *pH, WireInsBlock *p)
 
 	fprintf(stderr, "WireInsBlock: NumWires = %d\n", p->NumWires);
 	for(i = 0; i < p->NumWires; i++) {
-		fprintf(stderr, "WireInsBlock: DielC[%d] = %f\n", i + 1, p->Wires[i].DielC);
-		fprintf(stderr, "WireInsBlock: Thk[%d] = %f\n", i + 1, p->Wires[i].Thk);
-		fprintf(stderr, "WireInsBlock: LTan[%d] = %f\n", i + 1, p->Wires[i].LTan);
+		fprintf(stderr, "WireInsBlock: DielC[%d] = %g\n", i + 1, p->Wires[i].DielC);
+		fprintf(stderr, "WireInsBlock: Thk[%d] = %g\n", i + 1, p->Wires[i].Thk);
+		fprintf(stderr, "WireInsBlock: LTan[%d] = %g\n", i + 1, p->Wires[i].LTan);
 	}
 
 	fprintf(stderr, "\n");
@@ -869,10 +869,10 @@ dumpTLineLossBlock(BlkHeader *pH, TLineLossBlock *p)
 
 	pFloat = &p->Loss[0];
 	for(i = 0; i < p->NumLines; i++) {
-		fprintf(stderr, "TLineLossBlock: Loss[%d] = %f\n", i + 1, *pFloat++);
+		fprintf(stderr, "TLineLossBlock: Loss[%d] = %g\n", i + 1, *pFloat++);
 	}
 	for(i = 0; i < p->NumLines; i++) {
-		fprintf(stderr, "TLineLossBlock: LossFreq[%d] = %f\n", i + 1, *pFloat++);
+		fprintf(stderr, "TLineLossBlock: LossFreq[%d] = %g\n", i + 1, *pFloat++);
 	}
 
 	fprintf(stderr, "\n");
@@ -905,16 +905,16 @@ dumpTransformerBlock(BlkHeader *pH, TransformerBlockPtrs *p)
 	}
 
 	for(i = 0; i <= p->pA->NX; i++) {
-		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Percent = %f\n", i, p->pC[i].P1WPct);
-		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Percent = %f\n", i, p->pC[i].P2WPct);
+		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Percent = %g\n", i, p->pC[i].P1WPct);
+		fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Percent = %g\n", i, p->pC[i].P2WPct);
 	}
 
 	for(i = 0; i <= p->pA->NX; i++) {
-		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Z = %f\n", i, p->pD[i].P1RelZ);
+		fprintf(stderr, "TransformerBlock: Port1 Tx[%d] Z = %g\n", i, p->pD[i].P1RelZ);
 		if(p->pD[i].P2RelZ >= 0) {
-			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Norm\n", i, p->pD[i].P2RelZ);
+			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %g Norm\n", i, p->pD[i].P2RelZ);
 		} else {
-			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %f Rev\n", i, -p->pD[i].P2RelZ);
+			fprintf(stderr, "TransformerBlock: Port2 Tx[%d] Z = %g Rev\n", i, -p->pD[i].P2RelZ);
 		}
 	}
 
@@ -1358,6 +1358,7 @@ mapVarBlocks()
 			case VB_PLANE_WAVE_SRC:
 			default:
 				// Ignore - we don't know what this is.
+				fprintf(stderr, "Unhandled block of type %d\n", pH->BlockType);
 				break;
 		}
 
@@ -1606,7 +1607,7 @@ printTransmissionLines(FILE *pOut)
 		} else if(pRec2->TLWNr1 = (uint16_t)-2) {
 			if(Debug_Flag) fprintf(stderr, "End 1 = Open, ");
 		} else {
-			if(Debug_Flag) fprintf(stderr, "End 1 at wire %d, %10.6f %%", pRec2->TLWNr1, pRec2->TLWPct1);
+			if(Debug_Flag) fprintf(stderr, "End 1 at wire %d, %g %%", pRec2->TLWNr1, pRec2->TLWPct1);
 		}
 
 		if(pRec2->TLWNr2 == (uint16_t)-1) {
@@ -1614,23 +1615,23 @@ printTransmissionLines(FILE *pOut)
 		} else if(pRec2->TLWNr2 = (uint16_t)-2) {
 			if(Debug_Flag) fprintf(stderr, "End 2 = Open, ");
 		} else {
-			if(Debug_Flag) fprintf(stderr, "End 2 at wire %d, %10.6f %%", pRec2->TLWNr2, pRec2->TLWPct2);
+			if(Debug_Flag) fprintf(stderr, "End 2 at wire %d, %g %%", pRec2->TLWNr2, pRec2->TLWPct2);
 		}
 
 		if(pRec2->TLLen > 0) {
-			if(Debug_Flag) fprintf(stderr, "TL Length %10.6f, ", pRec2->TLLen / gConvert.xyz);
+			if(Debug_Flag) fprintf(stderr, "TL Length %g, ", pRec2->TLLen / gConvert.xyz);
 		} else if(pRec2->TLLen < 0) {
-			if(Debug_Flag) fprintf(stderr, "TL Length %10.6f d, ", -pRec2->TLLen);
+			if(Debug_Flag) fprintf(stderr, "TL Length %g d, ", -pRec2->TLLen);
 		} else {
 			if(Debug_Flag) fprintf(stderr, "TL Length actual distance, ");
 		}
 
 		if(pRec2->TLZ0 >= 0) {
-			if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f N, ", pRec2->TLZ0);
+			if(Debug_Flag) fprintf(stderr, "TL Z0 %g N, ", pRec2->TLZ0);
 		} else {
-			if(Debug_Flag) fprintf(stderr, "TL Z0 %10.6f R, ", -pRec2->TLZ0);
+			if(Debug_Flag) fprintf(stderr, "TL Z0 %g R, ", -pRec2->TLZ0);
 		}
-		if(Debug_Flag) fprintf(stderr, "TL VF %10.6f, ", pRec2->TLVF);
+		if(Debug_Flag) fprintf(stderr, "TL VF %g, ", pRec2->TLVF);
 	}
 }
 
@@ -1718,7 +1719,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	printTransmissionLines(pOut);
 
-
 	if(Debug_Flag) fprintf(stderr, "\n");
 	if(Debug_Flag) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	if(Debug_Flag) fprintf(stderr, "@@ Find Ground Media                                                        @@\n");
@@ -1766,8 +1766,8 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 	// .Range("O6").Value = gPointers.pRec1->WMu
 	// Rho should be resistivity and Mu should be permeability.  But I'd
 	// expect these to be on a load basis rather than global.
-	if(Debug_Flag) fprintf(stderr, "WRho %10.6f, ", gPointers.pRec1->WRho);
-	if(Debug_Flag) fprintf(stderr, "WMu %10.6f\n", gPointers.pRec1->WMu);
+	if(Debug_Flag) fprintf(stderr, "WRho %g, ", gPointers.pRec1->WRho);
+	if(Debug_Flag) fprintf(stderr, "WMu %g\n", gPointers.pRec1->WMu);
 
 	if(gPointers.pRec1->Gtype == 'R') {
 
@@ -1781,8 +1781,8 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 		// If Err.Number > 0 Then cboGcharLI = 11
 		// .Range("N4").Value = pRec2->MSigma
 		// .Range("O4").Value = pRec2->MEps
-		if(Debug_Flag) fprintf(stderr, "MSigma %10.6f, ", pRec2->MSigma);
-		if(Debug_Flag) fprintf(stderr, "MEps %10.6f\n", pRec2->MEps);
+		if(Debug_Flag) fprintf(stderr, "MSigma %g, ", pRec2->MSigma);
+		if(Debug_Flag) fprintf(stderr, "MEps %g\n", pRec2->MEps);
 
 		if(gPointers.pRec1->NM == 2) {
 			chkMedia2 = true;
@@ -1800,8 +1800,8 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 			// End If
 			// .Range("Q5").Value = RoundSig(CDbl(CStr(pRec2->MHt)) / gConvert.xyz, 7)
 			// .Range("R5").Value = RoundSig(CDbl(CStr(pRec2->MCoord)) / gConvert.xyz, 7)
-			if(Debug_Flag) fprintf(stderr, "MHt %10.6f, ", pRec2->MHt);
-			if(Debug_Flag) fprintf(stderr, "MCoord %10.6f\n", pRec2->MCoord);
+			if(Debug_Flag) fprintf(stderr, "MHt %g, ", pRec2->MHt);
+			if(Debug_Flag) fprintf(stderr, "MCoord %g\n", pRec2->MCoord);
 			if(gPointers.pRec1->BdryType == 'R') {
 			       	optMedia2Radial = true;
 			}
@@ -1810,16 +1810,16 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 	if(gPointers.pRec1->PType == '3') {
 		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%f", 0.0);
+		snprintf(txtPang, STR_LEN, "%g", 0.0);
 	} else if(gPointers.pRec1->PType == 'A' || gPointers.pRec1->OldPType == 'A') {
 		cboPtypeLI = 0;
-		snprintf(txtPang, STR_LEN, "%f", gPointers.pRec1->Pangle);
+		snprintf(txtPang, STR_LEN, "%g", gPointers.pRec1->Pangle);
 	} else if(gPointers.pRec1->PType == 'E' || gPointers.pRec1->OldPType == 'E') {
 		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%f", gPointers.pRec1->Pangle);
+		snprintf(txtPang, STR_LEN, "%g", gPointers.pRec1->Pangle);
 	} else {
 		cboPtypeLI = 1;
-		snprintf(txtPang, STR_LEN, "%f", 0.0);
+		snprintf(txtPang, STR_LEN, "%g", 0.0);
 	}
 	if(Debug_Flag) fprintf(stderr, "txtPang %s, ", txtPang);
 
@@ -1848,14 +1848,14 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 			// Step size is zero, so there is only a single frequency.
 			// We cannot use gpFSB->FStart because it is likely zero
 			// also.
-			if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", gFrequency);
+			if(Debug_Flag) fprintf(stderr, "TCFreq %g\n", gFrequency);
 		} else {
 			double Freq;
 			int i;
 
 			Freq = gpFSB->FStart;
 			for(i = 1; i <= round(((double)gpFSB->FStop - (double)gpFSB->FStart) / (double)gpFSB->FStep) + 1; i++) {
-				if(Debug_Flag) fprintf(stderr, "TCFreq %10.6f\n", Freq);
+				if(Debug_Flag) fprintf(stderr, "TCFreq %g\n", Freq);
 				Freq += gpFSB->FStep;
 			}
 		}
@@ -1871,9 +1871,9 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 		if(Debug_Flag) fprintf(stderr, "\n");
 
 		for(i = 0; i < gpWIB->NumWires; i++) {
-			if(Debug_Flag) fprintf(stderr, "Dielectric C %10.6f, ", gpWIB->Wires[i].DielC);
-			if(Debug_Flag) fprintf(stderr, "Thickness %10.6f\n", gpWIB->Wires[i].Thk / gConvert.wdiam);
-			if(Debug_Flag) fprintf(stderr, "Loss Tangent %10.6f\n", gpWIB->Wires[i].LTan);
+			if(Debug_Flag) fprintf(stderr, "Dielectric C %g, ", gpWIB->Wires[i].DielC);
+			if(Debug_Flag) fprintf(stderr, "Thickness %g\n", gpWIB->Wires[i].Thk / gConvert.wdiam);
+			if(Debug_Flag) fprintf(stderr, "Loss Tangent %g\n", gpWIB->Wires[i].LTan);
 		}
 	}
 
@@ -1889,11 +1889,11 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 
 		pFloat = &gpTLLB->Loss[0];
 		for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
-			if(Debug_Flag) fprintf(stderr, "Loss %10.6f\n", *pFloat++ * gConvert.tldB * 100);
+			if(Debug_Flag) fprintf(stderr, "Loss %g\n", *pFloat++ * gConvert.tldB * 100);
 		}
 
 		for(TLOff = 1; TLOff <= gPointers.pRec1->NT; TLOff++) {
-			if(Debug_Flag) fprintf(stderr, "LossFreq %10.6f\n", *pFloat++);
+			if(Debug_Flag) fprintf(stderr, "LossFreq %g\n", *pFloat++);
 		}
 
 		TLOff = gPointers.pRec1->NT;
@@ -1914,16 +1914,16 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 		}
 
 		for(i = 0; i <= gTB.pA->NX; i++) {
-			if(Debug_Flag) fprintf(stderr, "P1WPct %f, ", gTB.pC[i].P1WPct);
-			if(Debug_Flag) fprintf(stderr, "P2WPct %f\n", gTB.pC[i].P2WPct);
+			if(Debug_Flag) fprintf(stderr, "P1WPct %g, ", gTB.pC[i].P1WPct);
+			if(Debug_Flag) fprintf(stderr, "P2WPct %g\n", gTB.pC[i].P2WPct);
 		}
 
 		for(i = 0; i <= gTB.pA->NX; i++) {
-			if(Debug_Flag) fprintf(stderr, "P1RelZ %f, ", gTB.pD[i].P1RelZ);
+			if(Debug_Flag) fprintf(stderr, "P1RelZ %g, ", gTB.pD[i].P1RelZ);
 			if(gTB.pD[i].P2RelZ >= 0) {
-				if(Debug_Flag) fprintf(stderr, "P2RelZ %f N\n", gTB.pD[i].P2RelZ);
+				if(Debug_Flag) fprintf(stderr, "P2RelZ %g N\n", gTB.pD[i].P2RelZ);
 			} else {
-				if(Debug_Flag) fprintf(stderr, "P2RelZ %f R\n", -gTB.pD[i].P2RelZ);
+				if(Debug_Flag) fprintf(stderr, "P2RelZ %g R\n", -gTB.pD[i].P2RelZ);
 			}
 		}
 	}
@@ -1944,17 +1944,17 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 		}
 
 		for(i = 1; i <= gLNB.pA->NL; i++) {
-			if(Debug_Flag) fprintf(stderr, "P1WPct %10.6f, ", gLNB.pC[i].P1WPct);
-			if(Debug_Flag) fprintf(stderr, "P2WPct %10.6f\n", gLNB.pC[i].P2WPct);
+			if(Debug_Flag) fprintf(stderr, "P1WPct %g, ", gLNB.pC[i].P1WPct);
+			if(Debug_Flag) fprintf(stderr, "P2WPct %g\n", gLNB.pC[i].P2WPct);
 
 		}
 
 		if(gPointers.pRec1->LNetType == 'Z') {
 			for(i = 1; i <= gLNB.pA->NL; i++) {
-				if(Debug_Flag) fprintf(stderr, "B1R %10.6f, ", gLNB.pD[i].B1R);
-				if(Debug_Flag) fprintf(stderr, "B1X %10.6f, ", gLNB.pD[i].B1X);
-				if(Debug_Flag) fprintf(stderr, "B2R %10.6f, ", gLNB.pD[i].B2R);
-				if(Debug_Flag) fprintf(stderr, "B2X %10.6f\n", gLNB.pD[i].B2X);
+				if(Debug_Flag) fprintf(stderr, "B1R %g, ", gLNB.pD[i].B1R);
+				if(Debug_Flag) fprintf(stderr, "B1X %g, ", gLNB.pD[i].B1X);
+				if(Debug_Flag) fprintf(stderr, "B2R %g, ", gLNB.pD[i].B2R);
+				if(Debug_Flag) fprintf(stderr, "B2X %g\n", gLNB.pD[i].B2X);
 			}
 
 			optRjXb = true;
@@ -1962,14 +1962,14 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 			optRjXb = false;
 
 			for(i = 1; i <= gLNB.pA->NL; i++) {
-				if(Debug_Flag) fprintf(stderr, "B1rlcR %10.6f, ", gLNB.pF[i].B1rlcR);
-				if(Debug_Flag) fprintf(stderr, "B1rlcL %10.6f, ", gLNB.pF[i].B1rlcL * 1000000);
-				if(Debug_Flag) fprintf(stderr, "B1rlcC %10.6f, ", gLNB.pF[i].B1rlcC * 1000000000000);
-				if(Debug_Flag) fprintf(stderr, "B1rlcF %10.6f, ", gLNB.pF[i].B1rlcF);
-				if(Debug_Flag) fprintf(stderr, "B2rlcR %10.6f, ", gLNB.pF[i].B2rlcR);
-				if(Debug_Flag) fprintf(stderr, "B2rlcL %10.6f, ", gLNB.pF[i].B2rlcL * 1000000);
-				if(Debug_Flag) fprintf(stderr, "B2rlcC %10.6f, ", gLNB.pF[i].B2rlcC * 1000000000000);
-				if(Debug_Flag) fprintf(stderr, "B2rlcF %10.6f\n", gLNB.pF[i].B2rlcF);
+				if(Debug_Flag) fprintf(stderr, "B1rlcR %g, ", gLNB.pF[i].B1rlcR);
+				if(Debug_Flag) fprintf(stderr, "B1rlcL %g, ", gLNB.pF[i].B1rlcL * 1000000);
+				if(Debug_Flag) fprintf(stderr, "B1rlcC %g, ", gLNB.pF[i].B1rlcC * 1000000000000);
+				if(Debug_Flag) fprintf(stderr, "B1rlcF %g, ", gLNB.pF[i].B1rlcF);
+				if(Debug_Flag) fprintf(stderr, "B2rlcR %g, ", gLNB.pF[i].B2rlcR);
+				if(Debug_Flag) fprintf(stderr, "B2rlcL %g, ", gLNB.pF[i].B2rlcL * 1000000);
+				if(Debug_Flag) fprintf(stderr, "B2rlcC %g, ", gLNB.pF[i].B2rlcC * 1000000000000);
+				if(Debug_Flag) fprintf(stderr, "B2rlcF %g\n", gLNB.pF[i].B2rlcF);
 
 			}
 
@@ -2006,31 +2006,6 @@ Read_EZNEC(char *InputFile, char *OutputFile)
 			if(Debug_Flag) fprintf(stderr, "VSegNr %d\n", gpVSB->VSegNr[i]);
 		}
 	}
-
-	if(optRjXb) {
-		if(Debug_Flag) fprintf(stderr, "RjXb true\n");
-	} else {
-		if(Debug_Flag) fprintf(stderr, "RLCb true\n");
-	}
-
-	if(Debug_Flag) fprintf(stderr, "cboGtype.ListIndex %d\n", cboGtypeLI);
-	if(Debug_Flag) fprintf(stderr, "cboWireLoss.ListIndex %d\n", cboWireLossLI);
-	if(Debug_Flag) fprintf(stderr, "cboGchar.ListIndex %d\n", cboGcharLI);
-	if(Debug_Flag) fprintf(stderr, "cboPtype.ListIndex %d\n", cboPtypeLI);
-	if(Debug_Flag) fprintf(stderr, "txtPangle %s\n", txtPang);
-	if(Debug_Flag) fprintf(stderr, "cboPstep.ListIndex %d\n", cboPstepLI);
-
-	if(chkMedia2) {
-		if(Debug_Flag) fprintf(stderr, "chkMedia2 true\n");
-		if(Debug_Flag) fprintf(stderr, "cboGchar2.ListIndex %d\n", cboGchar2LI);
-
-		if(optMedia2Radial) {
-			if(Debug_Flag) fprintf(stderr, "optMedia2Radial true\n");
-		} else {
-			if(Debug_Flag) fprintf(stderr, "optMedia2Linear true\n");
-		}
-	}
-
 }
 
 void
