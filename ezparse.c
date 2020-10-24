@@ -1470,6 +1470,8 @@ loadVirtualWires()
 		for(i = 0; i < gVSegCount; i++) {
 			gVirtualSegs[i] = gpVSB->VSegNr[i];
 		}
+	} else {
+		gVSegWire = -1;
 	}
 }
 
@@ -1752,32 +1754,73 @@ printTransmissionLines(FILE *pOut)
 {
 	int i;
 	RecType2 *pTL;		// Record containing the TL information.
-	RecType2 *pWire;	// Record containing the wire information.
-	int wireNo;		// Number of the wire the source connects to.
-	int segNo;		// Segment to connect the source to.
+	RecType2 *pWire1;	// Record containing the side-1 wire information.
+	RecType2 *pWire2;	// Record containing the side-2 wire information.
+	int wireNo1;		// Number of the wire side-1 connects to.
+	int wireNo2;		// Number of the wire side-2 connects to.
+	int segNo1;		// Segment on wire-1.
+	int segNo2;		// Segment on wire-2.
 
 	// For a physical wire, this is the percentage along that wire where
 	// the TL connects.  We map it to a segment number.
 	//
 	// But for a virtual wire, this is actually an index into a table of
 	// virtual wire tags.
-	float percent;
+	float percent1;
+	float percent2;
 
+	fprintf(stderr, "%d TL\n", gPointers.pRec1->NT);
 	for(i = 0; i < gPointers.pRec1->NT; i++) {
 		pTL = gPointers.ppRec2[i];
-		wireNo = pTL->LWNr;
+		wireNo1 = pTL->TLWNr1;
+		wireNo2 = pTL->TLWNr2;
+		fprintf(stderr, "TL %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
 
-		// If this is a virtual wire, we look up its "virtual wire number".
+		if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
+			pWire1 = gPointers.ppRec2[wireNo1 - 1];
+		} else {
+			fprintf(stderr, "TL %d references wire-1 %d, which doesn't exist\n", i + 1, wireNo1);
+			return -1;
+		}
+
+		if((wireNo2 > 0) && (wireNo2 <= gPointers.pRec1->NW)) {
+			pWire2 = gPointers.ppRec2[wireNo2 - 1];
+		} else {
+			fprintf(stderr, "TL %d references wire-2 %d, which doesn't exist\n", i + 1, wireNo2);
+			return -1;
+		}
+
+		percent1 = pTL->TLWPct1;
+		percent2 = pTL->TLWPct2;
+
+		// If wire-1 is a virtual wire, we look up its "virtual wire number".
 		// The percentage is really an index into a table, rather than a
 		// 
-		if(wireNo == gVSegWire) {
+		if(wireNo1 == gVSegWire) {
+			fprintf(stderr, "TL %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
 			// Virtual wire.  Find virtual segment number.
-			segNo = gVirtualSegs[virtualIndex(percent)];
+			segNo1 = gVirtualSegs[virtualIndex(percent1)];
 
-			segNo = segmentNumber(pWire->WSegs, percent);
+			segNo1 = segmentNumber(pWire1->WSegs, percent1);
 		} else {
+			fprintf(stderr, "TL %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
 			// Real wire.  Find segment along wire from the percentage.
-			segNo = segmentNumber(pWire->WSegs, percent);
+			segNo1 = segmentNumber(pWire1->WSegs, percent1);
+		}
+
+		// If wire-2 is a virtual wire, we look up its "virtual wire number".
+		// The percentage is really an index into a table, rather than a
+		// 
+		if(wireNo2 == gVSegWire) {
+			fprintf(stderr, "TL %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
+			// Virtual wire.  Find virtual segment number.
+			segNo2 = gVirtualSegs[virtualIndex(percent2)];
+
+			segNo2 = segmentNumber(pWire2->WSegs, percent2);
+		} else {
+			fprintf(stderr, "TL %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
+			// Real wire.  Find segment along wire from the percentage.
+			segNo2 = segmentNumber(pWire2->WSegs, percent2);
 		}
 
 		// For a shorted line, we have to add a dummy wire.  I'm not
@@ -1813,6 +1856,133 @@ printTransmissionLines(FILE *pOut)
 		}
 		if(gDebug) fprintf(stderr, "TL VF %g, ", pTL->TLVF);
 	}
+
+	return 0;
+}
+
+// Print NT cards.
+int
+printLNetworks(FILE *pOut)
+{
+	int i;
+	RecType2 *pWire1;	// Record containing the side-1 wire information.
+	RecType2 *pWire2;	// Record containing the side-2 wire information.
+	int wireNo1;		// Number of the wire side-1 connects to.
+	int wireNo2;		// Number of the wire side-2 connects to.
+	int segNo1;		// Segment on wire-1.
+	int segNo2;		// Segment on wire-2.
+
+	LNetBlockA	*pA = gLNB.pA;
+	LNetBlockB	*pB = gLNB.pB;
+	LNetBlockC	*pC = gLNB.pC;
+	LNetBlockD	*pD = gLNB.pD;
+	LNetBlockE	*pE = gLNB.pE;
+	LNetBlockF	*pF = gLNB.pF;
+	LNetBlockG	*pG = gLNB.pG;
+
+	// For a physical wire, this is the percentage along that wire where
+	// the TL connects.  We map it to a segment number.
+	//
+	// But for a virtual wire, this is actually an index into a table of
+	// virtual wire tags.
+	float percent1;
+	float percent2;
+
+	if(gPointers.pRec1->NLNet && pA) {
+		fprintf(stderr, "%d LNets\n", pA->NL);
+		for(i = 1; i <= pA->NL; i++) {
+			wireNo1 = pB[i].P1WNr;
+			wireNo2 = pB[i].P2WNr;
+			fprintf(stderr, "LNet %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
+
+			if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
+				pWire1 = gPointers.ppRec2[wireNo1 - 1];
+			} else {
+				fprintf(stderr, "TL %d references wire-1 %d, which doesn't exist\n", i + 1, wireNo1);
+				return -1;
+			}
+
+			if((wireNo2 > 0) && (wireNo2 <= gPointers.pRec1->NW)) {
+				pWire2 = gPointers.ppRec2[wireNo2 - 1];
+			} else {
+				fprintf(stderr, "TL %d references wire-2 %d, which doesn't exist\n", i + 1, wireNo2);
+				return -1;
+			}
+
+			percent1 = pC[i].P1WPct;
+			percent2 = pC[i].P2WPct;
+
+			// If wire-1 is a virtual wire, we look up its "virtual wire number".
+			// The percentage is really an index into a table, rather than a
+			// 
+			if(wireNo1 == gVSegWire) {
+				fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
+				// Virtual wire.  Find virtual segment number.
+				segNo1 = gVirtualSegs[virtualIndex(percent1)];
+
+				segNo1 = segmentNumber(pWire1[i].WSegs, percent1);
+			} else {
+				fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
+				// Real wire.  Find segment along wire from the percentage.
+				segNo1 = segmentNumber(pWire1[i].WSegs, percent1);
+			}
+
+			// If wire-2 is a virtual wire, we look up its "virtual wire number".
+			// The percentage is really an index into a table, rather than a
+			// 
+			if(wireNo2 == gVSegWire) {
+				fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
+				// Virtual wire.  Find virtual segment number.
+				segNo2 = gVirtualSegs[virtualIndex(percent2)];
+
+				segNo2 = segmentNumber(pWire2[i].WSegs, percent2);
+			} else {
+				fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
+				// Real wire.  Find segment along wire from the percentage.
+				segNo2 = segmentNumber(pWire2[i].WSegs, percent2);
+			}
+
+			fprintf(pOut, "NT %5d %8d %8d %8d ", wireNo1, segNo1, wireNo2, segNo2);
+			fprintf(pOut, "%8g %8g\n", gFrequency, 0.0);
+
+			if(gPointers.pRec1->LNetType == 'Z') {
+					if(gDebug) fprintf(stderr, "B1R %g, ", gLNB.pD[i].B1R);
+					if(gDebug) fprintf(stderr, "B1X %g, ", gLNB.pD[i].B1X);
+					if(gDebug) fprintf(stderr, "B2R %g, ", gLNB.pD[i].B2R);
+					if(gDebug) fprintf(stderr, "B2X %g\n", gLNB.pD[i].B2X);
+			} else {
+					if(gDebug) fprintf(stderr, "B1rlcR %g, ", gLNB.pF[i].B1rlcR);
+					if(gDebug) fprintf(stderr, "B1rlcL %g, ", gLNB.pF[i].B1rlcL * 1000000);
+					if(gDebug) fprintf(stderr, "B1rlcC %g, ", gLNB.pF[i].B1rlcC * 1000000000000);
+					if(gDebug) fprintf(stderr, "B1rlcF %g, ", gLNB.pF[i].B1rlcF);
+					if(gDebug) fprintf(stderr, "B2rlcR %g, ", gLNB.pF[i].B2rlcR);
+					if(gDebug) fprintf(stderr, "B2rlcL %g, ", gLNB.pF[i].B2rlcL * 1000000);
+					if(gDebug) fprintf(stderr, "B2rlcC %g, ", gLNB.pF[i].B2rlcC * 1000000000000);
+					if(gDebug) fprintf(stderr, "B2rlcF %g\n", gLNB.pF[i].B2rlcF);
+
+				static char *Config[] = { "Ser", "Par", "Trap"};
+				for(i = 1; i <= gLNB.pA->NL; i++) {
+					char B1RLCType_Value[STR_LEN];
+					char B2RLCType_Value[STR_LEN];
+					switch(gLNB.pG[i].B1RLCType) {
+						case 'S': strlcpy(B1RLCType_Value, Config[0], STR_LEN); break;
+						case 'P': strlcpy(B1RLCType_Value, Config[1], STR_LEN); break;
+						case 'T': strlcpy(B1RLCType_Value, Config[2], STR_LEN); break;
+						default:  strlcpy(B1RLCType_Value, "?", STR_LEN); break;
+					}
+					switch(gLNB.pG[i].B2RLCType) {
+						case 'S': strlcpy(B2RLCType_Value, Config[0], STR_LEN); break;
+						case 'P': strlcpy(B2RLCType_Value, Config[1], STR_LEN); break;
+						case 'T': strlcpy(B2RLCType_Value, Config[2], STR_LEN); break;
+						default:  strlcpy(B2RLCType_Value, "?", STR_LEN); break;
+					}
+					if(gDebug) fprintf(stderr, "ConfigB1 %s, ConfigB2 %s\n", B1RLCType_Value, B2RLCType_Value);
+				}
+			}
+		}
+	}
+
+	return 0;
 }
 
 // Process an EZNEC file.
@@ -1874,6 +2044,7 @@ process(
 	printLoads(pOut);
 	printExcitation(pOut);
 	printTransmissionLines(pOut);
+	printLNetworks(pOut);
 	printGrounds(pOut);
 	printFrequencies(pOut);
 
@@ -1944,72 +2115,6 @@ process(
 		}
 	}
 
-	if(gLNB.pA) {
-		int i;
-		int optRjXb;
-
-		if(gDebug) fprintf(stderr, "\n");
-		if(gDebug) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		if(gDebug) fprintf(stderr, "@@ Have LNet Parameters                                                     @@\n");
-		if(gDebug) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-		if(gDebug) fprintf(stderr, "\n");
-
-		for(i = 1; i <= gLNB.pA->NL; i++) {
-			if(gDebug) fprintf(stderr, "P1WNr %d, ", gLNB.pB[i].P1WNr);
-			if(gDebug) fprintf(stderr, "P2WNr %d\n", gLNB.pB[i].P2WNr);
-
-		}
-
-		for(i = 1; i <= gLNB.pA->NL; i++) {
-			if(gDebug) fprintf(stderr, "P1WPct %g, ", gLNB.pC[i].P1WPct);
-			if(gDebug) fprintf(stderr, "P2WPct %g\n", gLNB.pC[i].P2WPct);
-
-		}
-
-		if(gPointers.pRec1->LNetType == 'Z') {
-			for(i = 1; i <= gLNB.pA->NL; i++) {
-				if(gDebug) fprintf(stderr, "B1R %g, ", gLNB.pD[i].B1R);
-				if(gDebug) fprintf(stderr, "B1X %g, ", gLNB.pD[i].B1X);
-				if(gDebug) fprintf(stderr, "B2R %g, ", gLNB.pD[i].B2R);
-				if(gDebug) fprintf(stderr, "B2X %g\n", gLNB.pD[i].B2X);
-			}
-
-			optRjXb = 1;
-		} else {
-			optRjXb = 0;
-
-			for(i = 1; i <= gLNB.pA->NL; i++) {
-				if(gDebug) fprintf(stderr, "B1rlcR %g, ", gLNB.pF[i].B1rlcR);
-				if(gDebug) fprintf(stderr, "B1rlcL %g, ", gLNB.pF[i].B1rlcL * 1000000);
-				if(gDebug) fprintf(stderr, "B1rlcC %g, ", gLNB.pF[i].B1rlcC * 1000000000000);
-				if(gDebug) fprintf(stderr, "B1rlcF %g, ", gLNB.pF[i].B1rlcF);
-				if(gDebug) fprintf(stderr, "B2rlcR %g, ", gLNB.pF[i].B2rlcR);
-				if(gDebug) fprintf(stderr, "B2rlcL %g, ", gLNB.pF[i].B2rlcL * 1000000);
-				if(gDebug) fprintf(stderr, "B2rlcC %g, ", gLNB.pF[i].B2rlcC * 1000000000000);
-				if(gDebug) fprintf(stderr, "B2rlcF %g\n", gLNB.pF[i].B2rlcF);
-
-			}
-
-			static char *Config[] = { "Ser", "Par", "Trap"};
-			for(i = 1; i <= gLNB.pA->NL; i++) {
-				char B1RLCType_Value[STR_LEN];
-				char B2RLCType_Value[STR_LEN];
-				switch(gLNB.pG[i].B1RLCType) {
-					case 'S': strlcpy(B1RLCType_Value, Config[0], STR_LEN); break;
-					case 'P': strlcpy(B1RLCType_Value, Config[1], STR_LEN); break;
-					case 'T': strlcpy(B1RLCType_Value, Config[2], STR_LEN); break;
-					default:  strlcpy(B1RLCType_Value, "?", STR_LEN); break;
-				}
-				switch(gLNB.pG[i].B2RLCType) {
-					case 'S': strlcpy(B2RLCType_Value, Config[0], STR_LEN); break;
-					case 'P': strlcpy(B2RLCType_Value, Config[1], STR_LEN); break;
-					case 'T': strlcpy(B2RLCType_Value, Config[2], STR_LEN); break;
-					default:  strlcpy(B2RLCType_Value, "?", STR_LEN); break;
-				}
-				if(gDebug) fprintf(stderr, "ConfigB1 %s, ConfigB2 %s\n", B1RLCType_Value, B2RLCType_Value);
-			}
-		}
-	}
 }
 
 void
