@@ -22,6 +22,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 
+#include <complex.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <getopt.h>
@@ -1893,7 +1894,7 @@ printLNetworks(FILE *pOut)
 		for(i = 1; i <= pA->NL; i++) {
 			wireNo1 = pB[i].P1WNr;
 			wireNo2 = pB[i].P2WNr;
-			fprintf(stderr, "LNet %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
+			fprintf(stderr, "LNet %d uses wire-1 %d and wire-2 %d\n", i, wireNo1, wireNo2);
 
 			if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
 				pWire1 = gPointers.ppRec2[wireNo1 - 1];
@@ -1943,41 +1944,65 @@ printLNetworks(FILE *pOut)
 			}
 
 			fprintf(pOut, "NT %5d %8d %8d %8d ", wireNo1, segNo1, wireNo2, segNo2);
-			fprintf(pOut, "%8g %8g\n", gFrequency, 0.0);
 
 			if(gPointers.pRec1->LNetType == 'Z') {
-					if(gDebug) fprintf(stderr, "B1R %g, ", gLNB.pD[i].B1R);
-					if(gDebug) fprintf(stderr, "B1X %g, ", gLNB.pD[i].B1X);
-					if(gDebug) fprintf(stderr, "B2R %g, ", gLNB.pD[i].B2R);
-					if(gDebug) fprintf(stderr, "B2X %g\n", gLNB.pD[i].B2X);
+				double complex z1 = gLNB.pD[i].B1R + gLNB.pD[i].B1X * I;
+				double complex z2 = gLNB.pD[i].B2R + gLNB.pD[i].B2X * I;
+				double complex y1 = 1.0 / z1;
+				double complex y2 = 1.0 / z2;
+
+				// B1 is in series
+				// B2 is in parallel
+				double complex y12 = -y1;
+				double complex y11 = y1;
+				double complex y22 = y2 - y1;
+				if(gDebug) fprintf(stderr, "B1R %g, ", gLNB.pD[i].B1R);
+				if(gDebug) fprintf(stderr, "B1X %g, ", gLNB.pD[i].B1X);
+				if(gDebug) fprintf(stderr, "B2R %g, ", gLNB.pD[i].B2R);
+				if(gDebug) fprintf(stderr, "B2X %g\n", gLNB.pD[i].B2X);
+
+				fprintf(pOut, "%8g %8g %8g %8g %8g %8g\n",
+						creal(y11), cimag(y11),
+						creal(y12), cimag(y12),
+						creal(y22), cimag(y22));
 			} else {
-					if(gDebug) fprintf(stderr, "B1rlcR %g, ", gLNB.pF[i].B1rlcR);
-					if(gDebug) fprintf(stderr, "B1rlcL %g, ", gLNB.pF[i].B1rlcL * 1000000);
-					if(gDebug) fprintf(stderr, "B1rlcC %g, ", gLNB.pF[i].B1rlcC * 1000000000000);
-					if(gDebug) fprintf(stderr, "B1rlcF %g, ", gLNB.pF[i].B1rlcF);
-					if(gDebug) fprintf(stderr, "B2rlcR %g, ", gLNB.pF[i].B2rlcR);
-					if(gDebug) fprintf(stderr, "B2rlcL %g, ", gLNB.pF[i].B2rlcL * 1000000);
-					if(gDebug) fprintf(stderr, "B2rlcC %g, ", gLNB.pF[i].B2rlcC * 1000000000000);
-					if(gDebug) fprintf(stderr, "B2rlcF %g\n", gLNB.pF[i].B2rlcF);
+				// B1 is in series
+				// B2 is in parallel
+				//
+				// This is a problem, because it has to be frequency-specific.
+				// So we really cannot produce a set of cards to run over a
+				// range of frequencies.  Instead, we'd have to create a
+				// separate card deck for each frequency, I think,
+				if(gDebug) fprintf(stderr, "B1rlcR %g, ", gLNB.pF[i].B1rlcR);
+				if(gDebug) fprintf(stderr, "B1rlcL %g, ", gLNB.pF[i].B1rlcL * 1000000);
+				if(gDebug) fprintf(stderr, "B1rlcC %g, ", gLNB.pF[i].B1rlcC * 1000000000000);
+				if(gDebug) fprintf(stderr, "B1rlcF %g, ", gLNB.pF[i].B1rlcF);
+				if(gDebug) fprintf(stderr, "B2rlcR %g, ", gLNB.pF[i].B2rlcR);
+				if(gDebug) fprintf(stderr, "B2rlcL %g, ", gLNB.pF[i].B2rlcL * 1000000);
+				if(gDebug) fprintf(stderr, "B2rlcC %g, ", gLNB.pF[i].B2rlcC * 1000000000000);
+				if(gDebug) fprintf(stderr, "B2rlcF %g\n", gLNB.pF[i].B2rlcF);
 
 				static char *Config[] = { "Ser", "Par", "Trap"};
-				for(i = 1; i <= gLNB.pA->NL; i++) {
-					char B1RLCType_Value[STR_LEN];
-					char B2RLCType_Value[STR_LEN];
-					switch(gLNB.pG[i].B1RLCType) {
-						case 'S': strlcpy(B1RLCType_Value, Config[0], STR_LEN); break;
-						case 'P': strlcpy(B1RLCType_Value, Config[1], STR_LEN); break;
-						case 'T': strlcpy(B1RLCType_Value, Config[2], STR_LEN); break;
-						default:  strlcpy(B1RLCType_Value, "?", STR_LEN); break;
-					}
-					switch(gLNB.pG[i].B2RLCType) {
-						case 'S': strlcpy(B2RLCType_Value, Config[0], STR_LEN); break;
-						case 'P': strlcpy(B2RLCType_Value, Config[1], STR_LEN); break;
-						case 'T': strlcpy(B2RLCType_Value, Config[2], STR_LEN); break;
-						default:  strlcpy(B2RLCType_Value, "?", STR_LEN); break;
-					}
-					if(gDebug) fprintf(stderr, "ConfigB1 %s, ConfigB2 %s\n", B1RLCType_Value, B2RLCType_Value);
+				char B1RLCType_Value[STR_LEN];
+				char B2RLCType_Value[STR_LEN];
+				switch(gLNB.pG[i].B1RLCType) {
+					case 'S': strlcpy(B1RLCType_Value, Config[0], STR_LEN); break;
+					case 'P': strlcpy(B1RLCType_Value, Config[1], STR_LEN); break;
+					case 'T': strlcpy(B1RLCType_Value, Config[2], STR_LEN); break;
+					default:  strlcpy(B1RLCType_Value, "?", STR_LEN); break;
 				}
+				switch(gLNB.pG[i].B2RLCType) {
+					case 'S': strlcpy(B2RLCType_Value, Config[0], STR_LEN); break;
+					case 'P': strlcpy(B2RLCType_Value, Config[1], STR_LEN); break;
+					case 'T': strlcpy(B2RLCType_Value, Config[2], STR_LEN); break;
+					default:  strlcpy(B2RLCType_Value, "?", STR_LEN); break;
+				}
+				if(gDebug) fprintf(stderr, "ConfigB1 %s, ConfigB2 %s\n", B1RLCType_Value, B2RLCType_Value);
+
+				fprintf(pOut, "%8g %8g %8g %8g %8g %8g\n",
+						0.0, 0.0,	// Y11R and Y11I
+						0.0, 0.0,	// Y12R and Y12I
+						0.0, 0.0);	// Y22R and Y22I
 			}
 		}
 	}
