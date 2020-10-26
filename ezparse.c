@@ -1662,6 +1662,7 @@ printLoads(FILE *pOut)
 		}
 	}
 
+#if 0
 	// Synthesize loads based on wire conductivity.
 	if(gPointers.pRec1->WRho != 0 || gPointers.pRec1->WMu != 1) {
 		for(i = 0; i < gPointers.pRec1->NW; i++) {
@@ -1669,6 +1670,11 @@ printLoads(FILE *pOut)
 			fprintf(pOut, "%8g %8g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
 		}
 	}
+#else
+	// Load all segments the same way.
+	fprintf(pOut, "LD %5d %8d %8d %8d ", 5, 0, 0, 0);
+	fprintf(pOut, "%8g %8g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
+#endif
 
 	return 0;
 }
@@ -1761,6 +1767,7 @@ printTransmissionLines(FILE *pOut)
 	int wireNo2;		// Number of the wire side-2 connects to.
 	int segNo1;		// Segment on wire-1.
 	int segNo2;		// Segment on wire-2.
+	double z0;		// Impedence of line
 
 	// For a physical wire, this is the percentage along that wire where
 	// the TL connects.  We map it to a segment number.
@@ -1856,6 +1863,10 @@ printTransmissionLines(FILE *pOut)
 			if(gDebug) fprintf(stderr, "TL Z0 %g R, ", -pTL->TLZ0);
 		}
 		if(gDebug) fprintf(stderr, "TL VF %g, ", pTL->TLVF);
+
+		z0 = fabs(pTL->TLZ0);
+		fprintf(pOut, "TL %5d %8d %8d %8d ", wireNo1, segNo1, wireNo2, segNo2);
+		fprintf(pOut, "%8g %8g\n", z0, 0.0);
 	}
 
 	return 0;
@@ -2010,6 +2021,15 @@ printLNetworks(FILE *pOut)
 	return 0;
 }
 
+// Print RP card.
+int
+printReport(FILE *pOut)
+{
+	// The 1+ on theta is to make xnecview happy.
+	fprintf(pOut, "RP %5d %8d %8d %8d ", 0, 1 + (int)round(180 / gPointers.pRec1->PStep), (int)round(360 / gPointers.pRec1->PStep), 1000);
+	fprintf(pOut, "%8g %8g %8g %8g\n", 0.0, 0.0, gPointers.pRec1->PStep, gPointers.pRec1->PStep);
+}
+
 // Process an EZNEC file.
 void
 process(
@@ -2072,6 +2092,7 @@ process(
 	printLNetworks(pOut);
 	printGrounds(pOut);
 	printFrequencies(pOut);
+	printReport(pOut);
 
 	if(gpWIB) {
 		int i;
