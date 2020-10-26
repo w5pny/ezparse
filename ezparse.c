@@ -46,6 +46,14 @@
 
 #define VSEG_MAX		1000
 
+#define SHORTED_END		0xffff
+#define OPEN_END		0xfffe
+
+
+// EZNEC Pro allows 20000 segments, so there cannot be more
+// wires than that.
+#define WIRE_MAX		20000
+
 // Cast a void pointer to a char pointer, add an offset, then cast it to the
 // desired type.  While gcc would let us add a constant to a void pointer
 // directly, it is not portable.
@@ -482,6 +490,7 @@ VirtSegmentBlock	*gpVSB;			// Single component
 uint32_t		gVirtualSegs[VSEG_MAX];	// Virtual segments
 uint32_t		gVSegCount;		// Number of virtual segments
 uint32_t		gVSegWire;		// Tag for all virtual wires
+int			gSyntheticWire;		// Synthetic wires
 
 // Copy a string, but always leave room for a null terminator, and add
 // one if needed.
@@ -602,7 +611,7 @@ dumpRecType1(RecType1 *p)
 }
 
 void
-dumpRecType2(RecType2 *p)
+dumpRecType2(int idx, RecType2 *p)
 {
 	if(!gDebug) {
 		return;
@@ -610,7 +619,7 @@ dumpRecType2(RecType2 *p)
 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
-	fprintf(stderr, "@@ Dump RecType2                                                            @@\n");
+	fprintf(stderr, "@@ Dump RecType2 #%d                                                        @@\n", idx); 
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	fprintf(stderr, "\n");
 
@@ -1202,7 +1211,7 @@ mapRecType2()
 	for(i = 0; i < gPointers.pRec1->MaxMWSL; i++) {
 		MAP(gPointers.ppRec2[i], RecType2, gIMap, position);
 
-		dumpRecType2(gPointers.ppRec2[i]);
+		dumpRecType2(i, gPointers.ppRec2[i]);
 
 		// Move to the next block.
 		position += PRIMARY_BS;
@@ -1510,7 +1519,10 @@ printWires(FILE *pOut)
 {
 	int i;
 	RecType2 *pWire;
+	RecType2 *pTL;
 	double tmp;
+	uint16_t wireNo1;	// Number of the wire side-1 connects to.
+	uint16_t wireNo2;	// Number of the wire side-2 connects to.
 
 	// We might want to handle virtual wires by finding #18 block first.
 	for(i = 0; i < gPointers.pRec1->NW; i++) {
@@ -1544,9 +1556,73 @@ printWires(FILE *pOut)
 			fprintf(pOut, "%8g\n", (tmp / 2.0) / gConvert.xyz);
 		}
 	}
+
+	// We may need to synthesize extra wires for open or shorted
+	// transmission lines at this point.
+	//
+	// Start off synthetic wires at a safe number.  We'll have to
+	// use the same starting value when we process TLs again later.
+	gSyntheticWire = WIRE_MAX + 1;
+	for(i = 0; i < gPointers.pRec1->NT; i++) {
+		pTL = gPointers.ppRec2[i];
+
+		wireNo1 = pTL->TLWNr1;
+		wireNo2 = pTL->TLWNr2;
+		if(wireNo1 != SHORTED_END && wireNo1 != OPEN_END && wireNo2 != SHORTED_END && wireNo2 != OPEN_END) {
+			// This is a nice normal transmission line connected
+			// to two actual wires.
+			continue;
+		}
+
+		if((wireNo1 == SHORTED_END || wireNo1 == OPEN_END) && (wireNo2 == SHORTED_END || wireNo2 == OPEN_END)) {
+			// This is bizarre - both ends of the TL are virtual.
+			// Ignore it.
+			continue;
+		}
+
+		// Exactly one end of the TL is virtual.  Get the other end.
+		if(wireNo1 == SHORTED_END || wireNo1 == OPEN_END) {
+			// Wire 1 is virtual, so wire 2 is real.
+			pWire = gPointers.ppRec2[wireNo2 - 1];
+		} else {
+			// Wire 2 is virtual, so wire 1 is real.
+			pWire = gPointers.ppRec2[wireNo1 - 1];
+		}
+
+		fprintf(pOut, "GW %5d %8d ", gSyntheticWire++, 1);
+
+		// Offset it in Z by the length of the TL.
+		fprintf(pOut, "%8g ", pWire->WEnd1_X / gConvert.xyz);
+		fprintf(pOut, "%8g ", pWire->WEnd1_Y / gConvert.xyz);
+		fprintf(pOut, "%8g ", (pWire->WEnd1_Z - pTL->TLLen) / gConvert.xyz);
+
+		fprintf(pOut, "%8g ", pWire->WEnd2_X / gConvert.xyz);
+		fprintf(pOut, "%8g ", pWire->WEnd2_Y / gConvert.xyz);
+		fprintf(pOut, "%8g ", (pWire->WEnd2_Z - pTL->TLLen) / gConvert.xyz);
+
+		if(pWire->WDiaGa == (uint16_t)-1) {
+			// There is only one scale factor in the GS card, so
+			// we cannot show wire diameter in different units
+			// than wire endpoints.
+			//
+			// NEC wants the radius, hence the divide-by-2.
+			fprintf(pOut, "%8g\n", (pWire->WireDia / 2.0) / gConvert.xyz);
+		} else {
+			// Calculate the wire diameter in meters, based on AWG
+			// algorithm.  Works for wire GA 0 and thinner.
+			//
+			// Print it based on the user's scalefactor.
+			//
+			// NEC wants the radius, hence the divide-by-2.
+			tmp = 0.005 * pow(92.0, ((36.0 - pWire->WDiaGa) / 39.0)) * 0.0254;
+			fprintf(pOut, "%8g\n", (tmp / 2.0) / gConvert.xyz);
+		}
+	}
+	
 	if(gConvert.xyz != 1.0) {
 		fprintf(pOut, "GS %5d %8d %8g\n", 0, 0, gConvert.xyz);
 	}
+
 	fprintf(pOut, "GE %5d %8d\n", 0, 0);
 }
 
@@ -1759,8 +1835,8 @@ printTransmissionLines(FILE *pOut)
 	RecType2 *pTL;		// Record containing the TL information.
 	RecType2 *pWire1;	// Record containing the side-1 wire information.
 	RecType2 *pWire2;	// Record containing the side-2 wire information.
-	int wireNo1;		// Number of the wire side-1 connects to.
-	int wireNo2;		// Number of the wire side-2 connects to.
+	uint16_t wireNo1;	// Number of the wire side-1 connects to.
+	uint16_t wireNo2;	// Number of the wire side-2 connects to.
 	int segNo1;		// Segment on wire-1.
 	int segNo2;		// Segment on wire-2.
 	double length;		// Length of line
@@ -1769,108 +1845,72 @@ printTransmissionLines(FILE *pOut)
 	double y2r;		// Real shunt admittance on side-2
 	double y2i;		// Imaginary shunt admittance on side-2
 
-	// For a physical wire, this is the percentage along that wire where
-	// the TL connects.  We map it to a segment number.
-	//
-	// But for a virtual wire, this is actually an index into a table of
-	// virtual wire tags.
-	float percent1;
-	float percent2;
-
 	if(gDebug) fprintf(stderr, "%d TL\n", gPointers.pRec1->NT);
+
+	// Start off synthetic wires at a safe number.  This has to match
+	// what we used in printWires() earlier.
+	gSyntheticWire = WIRE_MAX + 1;
 	for(i = 0; i < gPointers.pRec1->NT; i++) {
 		pTL = gPointers.ppRec2[i];
 		wireNo1 = pTL->TLWNr1;
 		wireNo2 = pTL->TLWNr2;
-		if(gDebug) fprintf(stderr, "TL %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
+		if(gDebug) fprintf(stderr, "TL %d uses wire %d and wire %d\n", i + 1, wireNo1, wireNo2);
 
-		if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
+		// Check for TLs with two virtual ends.
+		if((wireNo1 == SHORTED_END || wireNo1 == OPEN_END) && (wireNo2 == SHORTED_END || wireNo2 == OPEN_END)) {
+			// This is bizarre - both ends of the TL are virtual.
+			// Ignore this TL.
+			continue;
+		}
+
+		// Assign a synthetic wire if needed.
+		if(wireNo1 == SHORTED_END || wireNo1 == OPEN_END) {
+			if(wireNo1 == SHORTED_END) {
+				// Create a short via the admittance parameter.
+				y1r = 1E12;
+				y1i = 0.0;
+			} else {
+				// Create an open via the admittance parameter.
+				y1r = 0.0;
+				y1i = 0.0;
+			}
+
+			if(gDebug) fprintf(stderr, "TL %d references wire-1 %d, ", i + 1, wireNo1);
+
+			wireNo1 = gSyntheticWire++;
+			segNo1 = 1;
+			if(gDebug) fprintf(stderr, "so use synthetic wire %d instead\n", wireNo1);
+		} else {
+			// A nice normal wire.
+			y1r = 0.0;
+			y1i = 0.0;
 			pWire1 = gPointers.ppRec2[wireNo1 - 1];
-		} else {
-			if(gDebug) fprintf(stderr, "TL %d references wire-1 %d, which doesn't exist\n", i + 1, wireNo1);
-			return -1;
+			segNo1 = virtualIndex(pWire1->WSegs, pTL->TLWPct1);
 		}
 
-		if((wireNo2 > 0) && (wireNo2 <= gPointers.pRec1->NW)) {
+		// Assign a synthetic wire if needed.
+		if(wireNo2 == SHORTED_END || wireNo2 == OPEN_END) {
+			if(wireNo2 == SHORTED_END) {
+				// Create a short via the admittance parameter.
+				y2r = 1E12;
+				y2i = 0.0;
+			} else {
+				// Create an open via the admittance parameter.
+				y2r = 0.0;
+				y2i = 0.0;
+			}
+
+			if(gDebug) fprintf(stderr, "TL %d references wire-2 %d, ", i + 1, wireNo2);
+
+			wireNo2 = gSyntheticWire++;
+			segNo2 = 1;
+			if(gDebug) fprintf(stderr, "so use synthetic wire %d instead\n", wireNo2);
+		} else {
+			// A nice normal wire.
+			y2r = 0.0;
+			y2i = 0.0;
 			pWire2 = gPointers.ppRec2[wireNo2 - 1];
-		} else {
-			if(gDebug) fprintf(stderr, "TL %d references wire-2 %d, which doesn't exist\n", i + 1, wireNo2);
-			return -1;
-		}
-
-		percent1 = pTL->TLWPct1;
-		percent2 = pTL->TLWPct2;
-
-		// If wire-1 is a virtual wire, we look up its "virtual wire number".
-		// The percentage is really an index into a table, rather than a
-		// 
-		if(wireNo1 == gVSegWire) {
-			if(gDebug) fprintf(stderr, "TL %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
-			// Virtual wire.  Find virtual segment number.
-			segNo1 = gVirtualSegs[virtualIndex(gVSegCount, percent1)];
-
-			segNo1 = virtualIndex(pWire1->WSegs, percent1);
-		} else {
-			if(gDebug) fprintf(stderr, "TL %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
-			// Real wire.  Find segment along wire from the percentage.
-			segNo1 = virtualIndex(pWire1->WSegs, percent1);
-		}
-
-		// If wire-2 is a virtual wire, we look up its "virtual wire number".
-		// The percentage is really an index into a table, rather than a
-		// 
-		if(wireNo2 == gVSegWire) {
-			if(gDebug) fprintf(stderr, "TL %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
-			// Virtual wire.  Find virtual segment number.
-			segNo2 = gVirtualSegs[virtualIndex(gVSegCount, percent2)];
-
-			segNo2 = virtualIndex(pWire2->WSegs, percent2);
-		} else {
-			if(gDebug) fprintf(stderr, "TL %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
-			// Real wire.  Find segment along wire from the percentage.
-			segNo2 = virtualIndex(pWire2->WSegs, percent2);
-		}
-
-		// For a shorted line, we have to add a dummy wire.  I'm not
-		// sure how to model an open line.
-		if(pTL->TLWNr1 == (uint16_t)-1) {
-			// Create a short by setting a high admittance
-			// which is of course a low resistance.
-			y1r = 1E12;
-			y1i = 0.0;
-			if(gDebug) fprintf(stderr, "End 1 = Short, ");
-		} else if(pTL->TLWNr1 = (uint16_t)-2) {
-			// Create a open by setting a low admittance
-			// which is of course a high resistance.
-			y1r = 0.0;
-			y1i = 0.0;
-			if(gDebug) fprintf(stderr, "End 1 = Open, ");
-		} else {
-			// Just connected to a normal wire.  We could omit
-			// the y1r and y1i, but its easier to just use 0.
-			y1r = 0.0;
-			y1i = 0.0;
-			if(gDebug) fprintf(stderr, "End 1 at wire %d, %g %%", pTL->TLWNr1, pTL->TLWPct1);
-		}
-
-		if(pTL->TLWNr2 == (uint16_t)-1) {
-			// Create a short by setting a high admittance
-			// which is of course a low resistance.
-			y2r = 1E12;
-			y2i = 0.0;
-			if(gDebug) fprintf(stderr, "End 2 = Short, ");
-		} else if(pTL->TLWNr2 = (uint16_t)-2) {
-			// Create a open by setting a low admittance
-			// which is of course a high resistance.
-			y2r = 0.0;
-			y2i = 0.0;
-			if(gDebug) fprintf(stderr, "End 2 = Open, ");
-		} else {
-			// Just connected to a normal wire.  We could omit
-			// the y2r and y2i, but its easier to just use 0.
-			y2r = 0.0;
-			y2i = 0.0;
-			if(gDebug) fprintf(stderr, "End 2 at wire %d, %g %%", pTL->TLWNr2, pTL->TLWPct2);
+			segNo2 = virtualIndex(pWire2->WSegs, pTL->TLWPct2);
 		}
 
 		if(pTL->TLLen > 0) {
@@ -1905,8 +1945,8 @@ printLNetworks(FILE *pOut)
 	int i;
 	RecType2 *pWire1;	// Record containing the side-1 wire information.
 	RecType2 *pWire2;	// Record containing the side-2 wire information.
-	int wireNo1;		// Number of the wire side-1 connects to.
-	int wireNo2;		// Number of the wire side-2 connects to.
+	uint16_t wireNo1;	// Number of the wire side-1 connects to.
+	uint16_t wireNo2;	// Number of the wire side-2 connects to.
 	int segNo1;		// Segment on wire-1.
 	int segNo2;		// Segment on wire-2.
 
