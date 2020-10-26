@@ -1027,22 +1027,18 @@ dumpVirtSegmentBlock(BlkHeader *pH, VirtSegmentBlock *p)
 
 // Convert "percent along a wire" to a segment number.
 int
-segmentNumber(int segments, double percent)
+virtualIndex(int segments, double percent)
 {
-	return (int)round(((segments - 1) * (percent / 100.0)) + 1);
-}
+	int idx = (int)round(((percent / 100.0) + (1.0 / (segments * 2.0))) * segments);
 
-int
-virtualIndex(double percent)
-{
-	int idx = (int)round(((percent / 100.0) + (1.0 / (gVSegCount * 2.0))) * gVSegCount);
-
-	if(idx > gVSegCount) {
-		fprintf(stderr, "virtualIndex of %g is %d (overflow)\n", percent, gVSegCount);
-		return gVSegCount;
+	// We shouldn't need this but there is something strange about how
+	// gcc is doing math as compared to visual basic.
+	if(idx > segments) {
+		if(gDebug) fprintf(stderr, "virtualIndex of %g is %d (overflow %d)\n", percent, segments, idx);
+		return segments;
 	}
 
-	fprintf(stderr, "virtualIndex of %g is %d\n", percent, idx);
+	if(gDebug) fprintf(stderr, "virtualIndex of %g is %d\n", percent, idx);
 	return idx;
 }
 
@@ -1452,7 +1448,7 @@ mapVarBlocks()
 			case VB_PLANE_WAVE_SRC:
 			default:
 				// Ignore - we don't know what this is.
-				fprintf(stderr, "Unhandled block of type %d\n", pH->BlockType);
+				if(gDebug) fprintf(stderr, "Unhandled block of type %d\n", pH->BlockType);
 				break;
 		}
 
@@ -1590,12 +1586,12 @@ printExcitation(FILE *pOut)
 		// 
 		if(wireNo == gVSegWire) {
 			// Virtual wire.  Find virtual segment number.
-			segNo = gVirtualSegs[virtualIndex(percent)];
+			segNo = gVirtualSegs[virtualIndex(gVSegCount, percent)];
 
-			segNo = segmentNumber(pWire->WSegs, percent);
+			segNo = virtualIndex(pWire->WSegs, percent);
 		} else {
 			// Real wire.  Find segment along wire from the percentage.
-			segNo = segmentNumber(pWire->WSegs, percent);
+			segNo = virtualIndex(pWire->WSegs, percent);
 		}
 
 		switch(pSrc->Stype) {
@@ -1639,7 +1635,7 @@ printLoads(FILE *pOut)
 			return -1;
 		}
 
-		segNo = segmentNumber(pWire->WSegs, pLoad->LWPct);
+		segNo = virtualIndex(pWire->WSegs, pLoad->LWPct);
 
 		if(gPointers.pRec1->LType == 'Z') {
 			fprintf(pOut, "LD %5d %8d %8d %8d ", 4, wireNo, segNo, segNo);
@@ -1767,7 +1763,11 @@ printTransmissionLines(FILE *pOut)
 	int wireNo2;		// Number of the wire side-2 connects to.
 	int segNo1;		// Segment on wire-1.
 	int segNo2;		// Segment on wire-2.
-	double z0;		// Impedence of line
+	double length;		// Length of line
+	double y1r;		// Real shunt admittance on side-1
+	double y1i;		// Imaginary shunt admittance on side-1
+	double y2r;		// Real shunt admittance on side-2
+	double y2i;		// Imaginary shunt admittance on side-2
 
 	// For a physical wire, this is the percentage along that wire where
 	// the TL connects.  We map it to a segment number.
@@ -1777,24 +1777,24 @@ printTransmissionLines(FILE *pOut)
 	float percent1;
 	float percent2;
 
-	fprintf(stderr, "%d TL\n", gPointers.pRec1->NT);
+	if(gDebug) fprintf(stderr, "%d TL\n", gPointers.pRec1->NT);
 	for(i = 0; i < gPointers.pRec1->NT; i++) {
 		pTL = gPointers.ppRec2[i];
 		wireNo1 = pTL->TLWNr1;
 		wireNo2 = pTL->TLWNr2;
-		fprintf(stderr, "TL %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
+		if(gDebug) fprintf(stderr, "TL %d uses wire %d and wire %d\n", i, wireNo1, wireNo2);
 
 		if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
 			pWire1 = gPointers.ppRec2[wireNo1 - 1];
 		} else {
-			fprintf(stderr, "TL %d references wire-1 %d, which doesn't exist\n", i + 1, wireNo1);
+			if(gDebug) fprintf(stderr, "TL %d references wire-1 %d, which doesn't exist\n", i + 1, wireNo1);
 			return -1;
 		}
 
 		if((wireNo2 > 0) && (wireNo2 <= gPointers.pRec1->NW)) {
 			pWire2 = gPointers.ppRec2[wireNo2 - 1];
 		} else {
-			fprintf(stderr, "TL %d references wire-2 %d, which doesn't exist\n", i + 1, wireNo2);
+			if(gDebug) fprintf(stderr, "TL %d references wire-2 %d, which doesn't exist\n", i + 1, wireNo2);
 			return -1;
 		}
 
@@ -1805,68 +1805,94 @@ printTransmissionLines(FILE *pOut)
 		// The percentage is really an index into a table, rather than a
 		// 
 		if(wireNo1 == gVSegWire) {
-			fprintf(stderr, "TL %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
+			if(gDebug) fprintf(stderr, "TL %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
 			// Virtual wire.  Find virtual segment number.
-			segNo1 = gVirtualSegs[virtualIndex(percent1)];
+			segNo1 = gVirtualSegs[virtualIndex(gVSegCount, percent1)];
 
-			segNo1 = segmentNumber(pWire1->WSegs, percent1);
+			segNo1 = virtualIndex(pWire1->WSegs, percent1);
 		} else {
-			fprintf(stderr, "TL %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
+			if(gDebug) fprintf(stderr, "TL %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
 			// Real wire.  Find segment along wire from the percentage.
-			segNo1 = segmentNumber(pWire1->WSegs, percent1);
+			segNo1 = virtualIndex(pWire1->WSegs, percent1);
 		}
 
 		// If wire-2 is a virtual wire, we look up its "virtual wire number".
 		// The percentage is really an index into a table, rather than a
 		// 
 		if(wireNo2 == gVSegWire) {
-			fprintf(stderr, "TL %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
+			if(gDebug) fprintf(stderr, "TL %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
 			// Virtual wire.  Find virtual segment number.
-			segNo2 = gVirtualSegs[virtualIndex(percent2)];
+			segNo2 = gVirtualSegs[virtualIndex(gVSegCount, percent2)];
 
-			segNo2 = segmentNumber(pWire2->WSegs, percent2);
+			segNo2 = virtualIndex(pWire2->WSegs, percent2);
 		} else {
-			fprintf(stderr, "TL %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
+			if(gDebug) fprintf(stderr, "TL %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
 			// Real wire.  Find segment along wire from the percentage.
-			segNo2 = segmentNumber(pWire2->WSegs, percent2);
+			segNo2 = virtualIndex(pWire2->WSegs, percent2);
 		}
 
 		// For a shorted line, we have to add a dummy wire.  I'm not
 		// sure how to model an open line.
 		if(pTL->TLWNr1 == (uint16_t)-1) {
+			// Create a short by setting a high admittance
+			// which is of course a low resistance.
+			y1r = 1E12;
+			y1i = 0.0;
 			if(gDebug) fprintf(stderr, "End 1 = Short, ");
 		} else if(pTL->TLWNr1 = (uint16_t)-2) {
+			// Create a open by setting a low admittance
+			// which is of course a high resistance.
+			y1r = 0.0;
+			y1i = 0.0;
 			if(gDebug) fprintf(stderr, "End 1 = Open, ");
 		} else {
+			// Just connected to a normal wire.  We could omit
+			// the y1r and y1i, but its easier to just use 0.
+			y1r = 0.0;
+			y1i = 0.0;
 			if(gDebug) fprintf(stderr, "End 1 at wire %d, %g %%", pTL->TLWNr1, pTL->TLWPct1);
 		}
 
 		if(pTL->TLWNr2 == (uint16_t)-1) {
+			// Create a short by setting a high admittance
+			// which is of course a low resistance.
+			y2r = 1E12;
+			y2i = 0.0;
 			if(gDebug) fprintf(stderr, "End 2 = Short, ");
 		} else if(pTL->TLWNr2 = (uint16_t)-2) {
+			// Create a open by setting a low admittance
+			// which is of course a high resistance.
+			y2r = 0.0;
+			y2i = 0.0;
 			if(gDebug) fprintf(stderr, "End 2 = Open, ");
 		} else {
+			// Just connected to a normal wire.  We could omit
+			// the y2r and y2i, but its easier to just use 0.
+			y2r = 0.0;
+			y2i = 0.0;
 			if(gDebug) fprintf(stderr, "End 2 at wire %d, %g %%", pTL->TLWNr2, pTL->TLWPct2);
 		}
 
 		if(pTL->TLLen > 0) {
+			length = pTL->TLLen;
 			if(gDebug) fprintf(stderr, "TL Length %g, ", pTL->TLLen / gConvert.xyz);
 		} else if(pTL->TLLen < 0) {
-			if(gDebug) fprintf(stderr, "TL Length %g d, ", -pTL->TLLen);
+			// FIXME: This needs to be converted to a length at a frequency.
+			// It will have to use the velocity factor.
+			length = -pTL->TLLen;
+			if(gDebug) fprintf(stderr, "TL Length %g degrees, ", -pTL->TLLen);
 		} else {
+			length = 0.0;
 			if(gDebug) fprintf(stderr, "TL Length actual distance, ");
 		}
 
-		if(pTL->TLZ0 >= 0) {
-			if(gDebug) fprintf(stderr, "TL Z0 %g N, ", pTL->TLZ0);
-		} else {
-			if(gDebug) fprintf(stderr, "TL Z0 %g R, ", -pTL->TLZ0);
-		}
 		if(gDebug) fprintf(stderr, "TL VF %g, ", pTL->TLVF);
 
-		z0 = fabs(pTL->TLZ0);
+		// A negative TLZ0 means to reverse the connections at one
+		// end, thus introducing a 180 degree phase shift.
 		fprintf(pOut, "TL %5d %8d %8d %8d ", wireNo1, segNo1, wireNo2, segNo2);
-		fprintf(pOut, "%8g %8g\n", z0, 0.0);
+		fprintf(pOut, "%8g %8g %8g %8g %8g %8g\n",
+				pTL->TLZ0, length, y1r, y1i, y2r, y2i);
 	}
 
 	return 0;
@@ -1930,13 +1956,13 @@ printLNetworks(FILE *pOut)
 			if(wireNo1 == gVSegWire) {
 				fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
-				segNo1 = gVirtualSegs[virtualIndex(percent1)];
+				segNo1 = gVirtualSegs[virtualIndex(gVSegCount, percent1)];
 
-				segNo1 = segmentNumber(pWire1[i].WSegs, percent1);
+				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			} else {
 				fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
-				segNo1 = segmentNumber(pWire1[i].WSegs, percent1);
+				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			}
 
 			// If wire-2 is a virtual wire, we look up its "virtual wire number".
@@ -1945,13 +1971,13 @@ printLNetworks(FILE *pOut)
 			if(wireNo2 == gVSegWire) {
 				fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
-				segNo2 = gVirtualSegs[virtualIndex(percent2)];
+				segNo2 = gVirtualSegs[virtualIndex(gVSegCount, percent2)];
 
-				segNo2 = segmentNumber(pWire2[i].WSegs, percent2);
+				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			} else {
 				fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
-				segNo2 = segmentNumber(pWire2[i].WSegs, percent2);
+				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			}
 
 			fprintf(pOut, "NT %5d %8d %8d %8d ", wireNo1, segNo1, wireNo2, segNo2);
