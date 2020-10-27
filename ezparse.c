@@ -535,6 +535,55 @@ printStr(char *p, int len)
 	fputc('\n', stderr);
 }
 
+typedef struct {
+	double x;
+	double y;
+	double z;
+} ENDPOINT;
+
+typedef struct {
+	ENDPOINT start;
+	ENDPOINT end;
+} ENDPOINTS;
+
+int
+findSegmentCoordinates(RecType2 *pWire, int segNo, ENDPOINTS *result)
+{
+	double deltaX;
+	double deltaY;
+	double deltaZ;
+
+	double segLenX;
+	double segLenY;
+	double segLenZ;
+
+	if(!result) {
+		return -1;
+	}
+
+	if(segNo < 1 || segNo > pWire->WSegs) {
+		return -1;
+	}
+
+	deltaX = pWire->WEnd2_X - pWire->WEnd1_X;
+	deltaY = pWire->WEnd2_Y - pWire->WEnd1_Y;
+	deltaZ = pWire->WEnd2_Z - pWire->WEnd1_Z;
+
+	segLenX = deltaX / pWire->WSegs;
+	segLenY = deltaY / pWire->WSegs;
+	segLenZ = deltaZ / pWire->WSegs;
+	
+	result->start.x = pWire->WEnd1_X + segLenX * (segNo - 1);
+	result->start.y = pWire->WEnd1_Y + segLenY * (segNo - 1);
+	result->start.z = pWire->WEnd1_Z + segLenZ * (segNo - 1);
+	
+	result->end.x = pWire->WEnd1_X + segLenX * segNo;
+	result->end.y = pWire->WEnd1_Y + segLenY * segNo;
+	result->end.z = pWire->WEnd1_Z + segLenZ * segNo;
+
+	return 0;
+}
+
 void
 dumpRecType1(RecType1 *p)
 {
@@ -1523,6 +1572,9 @@ printWires(FILE *pOut)
 	double tmp;
 	uint16_t wireNo1;	// Number of the wire side-1 connects to.
 	uint16_t wireNo2;	// Number of the wire side-2 connects to.
+	int segNo;		// Segment number.
+	float percent;		// Percentage along wire.
+	ENDPOINTS points;	// Endpoints of a segment.
 
 	// We might want to handle virtual wires by finding #18 block first.
 	for(i = 0; i < gPointers.pRec1->NW; i++) {
@@ -1584,21 +1636,25 @@ printWires(FILE *pOut)
 		if(wireNo1 == SHORTED_END || wireNo1 == OPEN_END) {
 			// Wire 1 is virtual, so wire 2 is real.
 			pWire = gPointers.ppRec2[wireNo2 - 1];
+			percent = pTL->TLWPct2;
 		} else {
 			// Wire 2 is virtual, so wire 1 is real.
 			pWire = gPointers.ppRec2[wireNo1 - 1];
+			percent = pTL->TLWPct1;
 		}
+		segNo = virtualIndex(pWire->WSegs, percent);
+		findSegmentCoordinates(pWire, segNo, &points);
 
 		fprintf(pOut, "GW %5d %8d ", gSyntheticWire++, 1);
 
 		// Offset it in Z by the length of the TL.
-		fprintf(pOut, "%8g ", pWire->WEnd1_X / gConvert.xyz);
-		fprintf(pOut, "%8g ", pWire->WEnd1_Y / gConvert.xyz);
-		fprintf(pOut, "%8g ", (pWire->WEnd1_Z - pTL->TLLen) / gConvert.xyz);
+		fprintf(pOut, "%8g ", points.start.x / gConvert.xyz);
+		fprintf(pOut, "%8g ", points.start.y / gConvert.xyz);
+		fprintf(pOut, "%8g ", (points.start.z - pTL->TLLen) / gConvert.xyz);
 
-		fprintf(pOut, "%8g ", pWire->WEnd2_X / gConvert.xyz);
-		fprintf(pOut, "%8g ", pWire->WEnd2_Y / gConvert.xyz);
-		fprintf(pOut, "%8g ", (pWire->WEnd2_Z - pTL->TLLen) / gConvert.xyz);
+		fprintf(pOut, "%8g ", points.end.x / gConvert.xyz);
+		fprintf(pOut, "%8g ", points.end.y / gConvert.xyz);
+		fprintf(pOut, "%8g ", (points.end.z - pTL->TLLen) / gConvert.xyz);
 
 		if(pWire->WDiaGa == (uint16_t)-1) {
 			// There is only one scale factor in the GS card, so
@@ -1662,8 +1718,11 @@ printExcitation(FILE *pOut)
 		// 
 		if(wireNo == gVSegWire) {
 			// Virtual wire.  Find virtual segment number.
-			segNo = gVirtualSegs[virtualIndex(gVSegCount, percent)];
+			//segNo = gVirtualSegs[virtualIndex(gVSegCount, percent)];
 
+			// We don't implement virtual wires.  It is easier to
+			// use the extra wires added for the benefit of older
+			// EZNEC implementations.
 			segNo = virtualIndex(pWire->WSegs, percent);
 		} else {
 			// Real wire.  Find segment along wire from the percentage.
@@ -1827,6 +1886,13 @@ printFrequencies(FILE *pOut)
 	return 0;
 }
 
+// Convert frequency in MHz to wavelength in meters.
+double
+freqToWavelength(double freq)
+{
+	return 299.792458 / freq;
+}
+
 // Print TL cards.
 int
 printTransmissionLines(FILE *pOut)
@@ -1914,19 +1980,22 @@ printTransmissionLines(FILE *pOut)
 		}
 
 		if(pTL->TLLen > 0) {
+			// Positive TLLen is length in meters.
 			length = pTL->TLLen;
 			if(gDebug) fprintf(stderr, "TL Length %g, ", pTL->TLLen / gConvert.xyz);
 		} else if(pTL->TLLen < 0) {
-			// FIXME: This needs to be converted to a length at a frequency.
-			// It will have to use the velocity factor.
-			length = -pTL->TLLen;
-			if(gDebug) fprintf(stderr, "TL Length %g degrees, ", -pTL->TLLen);
+			// Negative TLLen implies length in degrees.
+			double wl = freqToWavelength(gFrequency);
+			length = pTL->TLVF * wl * -pTL->TLLen / 360.0;
+			if(gDebug) fprintf(stderr, "TL Length %g degrees, meters %g, ", -pTL->TLLen, length);
 		} else {
+			// 0 TLLen means "use physical distance between
+			// endpoints".
 			length = 0.0;
 			if(gDebug) fprintf(stderr, "TL Length actual distance, ");
 		}
 
-		if(gDebug) fprintf(stderr, "TL VF %g, ", pTL->TLVF);
+		if(gDebug) fprintf(stderr, "TL VF %g\n", pTL->TLVF);
 
 		// A negative TLZ0 means to reverse the connections at one
 		// end, thus introducing a 180 degree phase shift.
