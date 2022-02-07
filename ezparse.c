@@ -1621,18 +1621,22 @@ printWires(FILE *pOut)
 		wireNo1 = pTL->TLWNr1;
 		wireNo2 = pTL->TLWNr2;
 		if(wireNo1 != SHORTED_END && wireNo1 != OPEN_END && wireNo2 != SHORTED_END && wireNo2 != OPEN_END) {
-			// This is a nice normal transmission line connected
-			// to two actual wires.
+			// This is a nice normal transmission line
+			// connected to two actual wires.  There is
+			// no need to synthesize a wire.
 			continue;
 		}
 
 		if((wireNo1 == SHORTED_END || wireNo1 == OPEN_END) && (wireNo2 == SHORTED_END || wireNo2 == OPEN_END)) {
 			// This is bizarre - both ends of the TL are virtual.
-			// Ignore it.
+			// Ignore it.  We'll also ignore it later, when we
+			// emit the TL cards.
 			continue;
 		}
 
-		// Exactly one end of the TL is virtual.  Get the other end.
+		// Exactly one end of the TL is virtual, so we have to
+		// synthesize one wire.  Get the other end of the TL
+		// so we can use it as a model for the synthesized wire.
 		if(wireNo1 == SHORTED_END || wireNo1 == OPEN_END) {
 			// Wire 1 is virtual, so wire 2 is real.
 			pWire = gPointers.ppRec2[wireNo2 - 1];
@@ -1642,12 +1646,24 @@ printWires(FILE *pOut)
 			pWire = gPointers.ppRec2[wireNo1 - 1];
 			percent = pTL->TLWPct1;
 		}
+
+		// Based on the percentage, figure out which segment the
+		// TL connects to on the real wire, and find its xyz
+		// coordinates.
+		//
+		// We will create a new wire corresponding to that segment's
+		// xyz coordinates, and offset by the length of the TL in Z.
 		segNo = virtualIndex(pWire->WSegs, percent);
 		findSegmentCoordinates(pWire, segNo, &points);
 
+		// We always create a single-segment wire.
 		fprintf(pOut, "GW %5d %8d ", gSyntheticWire++, 1);
 
-		// Offset it in Z by the length of the TL.
+		// Offset it in negative Z by the length of the TL.
+		//
+		// FIXME:  We might have to do something more complicated
+		// here.  Perhaps we need to offset so as not to collide
+		// with other wires?
 		fprintf(pOut, "%8g ", points.start.x / gConvert.xyz);
 		fprintf(pOut, "%8g ", points.start.y / gConvert.xyz);
 		fprintf(pOut, "%8g ", (points.start.z - pTL->TLLen) / gConvert.xyz);
