@@ -1695,10 +1695,11 @@ printWires(FILE *pOut)
 		fprintf(pOut, "GS %d,%d,%.7g\n", 0, 0, gConvert.xyz);
 	}
 
-        if (gNecVersion == 2)
+	if (gNecVersion == 2) {
 		fprintf(pOut, "GE %d\n", 0);
-        else
+	} else {
 		fprintf(pOut, "GE %d\n", (-1));
+	}
 }
 
 // Print EX cards.
@@ -1767,7 +1768,7 @@ printExcitation(FILE *pOut)
 
 		fprintf(pOut, "EX %d,%d,%d,%d,", type, wireNo, segNo, 0);
 
-                // SMP_M seems to be an RMS magnitude -- WHY???
+		// SMP_M seems to be an RMS magnitude -- WHY???
 		fprintf(pOut, "%.7g,%.7g\n",
 				pSrc->SMP_M * (cos(pSrc->SMP_Pdeg * PI / 180.0)*sqrt(2.0)),
 				pSrc->SMP_M * (sin(pSrc->SMP_Pdeg * PI / 180.0)*sqrt(2.0)));
@@ -1806,8 +1807,9 @@ printLoads(FILE *pOut)
 
 		segNo = virtualIndex(pWire->WSegs, pLoad->LWPct);
 
-                if (gNecVersion == 5 && pWire->SWPct < 50)
+		if (gNecVersion == 5 && pWire->SWPct < 50) {
 			segNo = -segNo;
+		}
 
 		if(gPointers.pRec1->LType == 'Z') {
 			fprintf(pOut, "LD %d,%d,%d,%d,", 4, wireNo, segNo, 0);
@@ -1879,20 +1881,22 @@ printGrounds(FILE *pOut)
 			// There are two Sommerfeld methods, and we always
 			// pick the higher quality one if we have the NEC 4
 			// engine available.
-			type = 0;
-			if(gNecVersion == 4)
-				type = 3;
-			else if (gNecVersion == 2)
-                                type = 2;
+			switch(gNecVersion) {
+				case 2:  type = 2; break; // NEC 2 use Sommerfeld/Norton method
+				case 4:  type = 3; break; // NEC 4 use Sommerfeld/Asymptotic (new version)
+				case 5:  type = 0; break; // NEC 5 use Sommerfeld method
+				default: type = 0; break; // Should never get here
+			}
 
 			pGnd = gPointers.ppRec2[0];
 
 			fprintf(pOut, "GN %d,%d,%d,%d,", type, gPointers.pRec1->NR, 0, 0);
 			fprintf(pOut, "%.7g,%.7g,", pGnd->MEps, pGnd->MSigma);
-                        if (gNecVersion == 5)
-                                fprintf(pOut, "%.7g,%.7g\n", 1.0, 0.0);
-                        else
-                                fprintf(pOut, "\n");
+			if (gNecVersion == 5) {
+				fprintf(pOut, "%.7g,%.7g\n", 1.0, 0.0);
+			} else {
+				fprintf(pOut, "\n");
+			}
 
 			if(gPointers.pRec1->Gtype == 'R') {
 				if(gPointers.pRec1->NM == 2) {
@@ -2204,10 +2208,11 @@ printReport(FILE *pOut)
 {
 	double step;
 
-	if (gPointers.pRec1->PType == '3' || gPointers.pRec1->PType == '2')
-                step = gPointers.pRec1->PStep3D;
-        else
-                step = gPointers.pRec1->PStep;
+	if (gPointers.pRec1->PType == '3' || gPointers.pRec1->PType == '2') {
+		step = gPointers.pRec1->PStep3D;
+	} else {
+		step = gPointers.pRec1->PStep;
+	}
 
 	// The + 1 on theta is to make xnecview happy.
 	// The - 1 on phi is to make xnecview happy.
@@ -2274,7 +2279,7 @@ process(
 	printWires(pOut);
 	printLoads(pOut);
 	printExcitation(pOut);
-        printCharges(pOut);
+	printCharges(pOut);
 	printTransmissionLines(pOut);
 	printLNetworks(pOut);
 	printGrounds(pOut);
