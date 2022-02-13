@@ -2366,7 +2366,7 @@ usage(char *prog)
 	fprintf(stderr, "If you don't specify an output_file, then output will\n");
 	fprintf(stderr, "go to the terminal\n");
 	fprintf(stderr, "\n");
-	fprintf(stderr, "nec_version can be 2 or 4.  This influences various\n");
+	fprintf(stderr, "nec_version can be 2, 4, or 5.  This influences various\n");
 	fprintf(stderr, "card generation parameters.\n");
 }
 
