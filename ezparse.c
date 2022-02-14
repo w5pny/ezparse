@@ -1871,7 +1871,7 @@ printLoads(FILE *pOut)
 
 		segNo = virtualIndex(pWire->WSegs, pLoad->LWPct);
 
-		if (gNecVersion == 5 && pWire->SWPct < 50) {
+		if(gNecVersion == 5 && pWire->SWPct < 50) {
 			segNo = -segNo;
 		}
 
@@ -1904,9 +1904,12 @@ printLoads(FILE *pOut)
 			fprintf(pOut, "%.7g,%.7g\n", 1.0 / gpWLB->Wires[i].Rho, gpWLB->Wires[i].Mu);
 		}
 	} else {
-		// Block 13 is not present.  Use the global information on a single LD card.
-		fprintf(pOut, "LD %d,%d,%d,%d,", 5, 0, 0, 0);
-		fprintf(pOut, "%.7g,%.7g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
+		// Block 13 is not present.  Use the global information on a single LD card,
+		// assuming it looks reasonable.  If WRho is zero, then skip this card.
+		if(gPointers.pRec1->WRho != 0.0) {
+			fprintf(pOut, "LD %d,%d,%d,%d,", 5, 0, 0, 0);
+			fprintf(pOut, "%.7g,%.7g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
+		}
 	}
 #else
 	// Load all segments the same way.
