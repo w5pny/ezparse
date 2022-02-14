@@ -1253,12 +1253,16 @@ mapRecType1()
 		gPointers.pRec1->MaxMWSL = gPointers.pRec1->OldMaxMWSL;
 	}
 
-	if(gPointers.pRec1->NW == 0) {
+	if(gPointers.pRec1->OldNW < 32767) {
 		// OldNW is 16 bit, and has been replaced by NW
-		// which is 32 bit.  Older programs may not have filled
-		// NW in, I suppose.
+		// which is 32 bit.  Often, OldNW and NW will
+		// be the same, assuming the file was produced by
+		// a recent version of EZNEC.  Older versions of
+		// EZNEC may put garbage in NW.
 		//
-		// But I have no way to test that.
+		// If OldNW is less than 32767, then use that.
+		// If OldNW is equal to 32767, then use NW, because
+		// 32767 is most likely a flag.
 		gPointers.pRec1->NW = gPointers.pRec1->OldNW;
 	}
 
