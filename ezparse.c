@@ -38,6 +38,7 @@
 
 #define VB_FREQ_SWEEP		11
 #define VB_WIRE_INS		12
+#define VB_WIRE_LOSS		13
 #define VB_TL_LOSS		14
 #define VB_TRANSFORMER		15
 #define VB_Y_PARAM		16
@@ -324,6 +325,17 @@ typedef struct __attribute__((__packed__)) {
 	} Wires[1];
 } WireInsBlock;
 
+// Wire Loss Block
+//
+// WARNING: We must use the BlockLen rather than the sizeof(WireLossBlock)!
+typedef struct __attribute__((__packed__)) {
+	uint32_t	NumWires;	// Number of wires in the following array
+	struct {
+		float		Rho;	// Wire resistivity
+		float		Mu;	// Wire permeability
+	} Wires[1];
+} WireLossBlock;
+
 // Transmission Line Loss Parameters
 //
 // This block is a bit difficult because it is specified as containing
@@ -451,6 +463,7 @@ typedef struct {
 	union {
 		FreqSweepBlk		*pFSB;	// Single component
 		WireInsBlock		*pWIB;	// Single component
+		WireLossBlock		*pWLB;	// Single component
 		TLineLossBlock		*pTLLB;	// Single component
 		TransformerBlockPtrs	TB;	// Multiple component
 		LNetBlockPtrs		LNB;	// Multiple component
@@ -484,6 +497,7 @@ int			gVarCount;		// Number of variable-length blocks
 int			gNecVersion;		// NEC version (2, 4 or 5)
 FreqSweepBlk		*gpFSB;			// Single component
 WireInsBlock		*gpWIB;			// Single component
+WireLossBlock		*gpWLB;			// Single component
 TLineLossBlock		*gpTLLB;		// Single component
 TransformerBlockPtrs	gTB;			// Multiple component
 LNetBlockPtrs		gLNB;			// Multiple component
@@ -904,8 +918,36 @@ dumpWireInsBlock(BlkHeader *pH, WireInsBlock *p)
 	fprintf(stderr, "WireInsBlock: NumWires = %d\n", p->NumWires);
 	for(i = 0; i < p->NumWires; i++) {
 		fprintf(stderr, "WireInsBlock: DielC[%d] = %.7g\n",	i + 1, p->Wires[i].DielC);
-		fprintf(stderr, "WireInsBlock: Thk[%d] = %.7g\n",		i + 1, p->Wires[i].Thk);
+		fprintf(stderr, "WireInsBlock: Thk[%d] = %.7g\n",	i + 1, p->Wires[i].Thk);
 		fprintf(stderr, "WireInsBlock: LTan[%d] = %.7g\n",	i + 1, p->Wires[i].LTan);
+	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ End Dump                                                                 @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+}
+
+void
+dumpWireLossBlock(BlkHeader *pH, WireLossBlock *p)
+{
+	int i;
+
+	if(!gDebug) {
+		return;
+	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ Dump Wire Loss Block                                                     @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "WireLossBlock: NumWires = %d\n", p->NumWires);
+	for(i = 0; i < p->NumWires; i++) {
+		fprintf(stderr, "WireLossBlock: Rho[%d] = %.7g\n",	i + 1, p->Wires[i].Rho);
+		fprintf(stderr, "WireLossBlock: Mu[%d] = %.7g\n",	i + 1, p->Wires[i].Mu);
 	}
 
 	fprintf(stderr, "\n");
@@ -1298,6 +1340,7 @@ mapVarBlocks()
 	uint32_t need;
 	int foundFS = 0;
 	int foundWI = 0;
+	int foundWL = 0;
 	int foundTL = 0;
 	int foundTX = 0;
 	int foundLN = 0;
@@ -1375,6 +1418,18 @@ mapVarBlocks()
 				VMAP(pB->u.pWIB, WireInsBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
 				gpWIB = pB->u.pWIB;
 				dumpWireInsBlock(pH, gpWIB);
+				break;
+
+			case VB_WIRE_LOSS:
+				if(foundWL) {
+					fprintf(stderr, "Duplicate VB_WIRE_LOSS - replacing!\n");
+				}
+				++foundWL;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pWLB, WireLossBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				gpWLB = pB->u.pWLB;
+				dumpWireLossBlock(pH, gpWLB);
 				break;
 
 			case VB_TL_LOSS:
@@ -2300,6 +2355,21 @@ process(
 			if(gDebug) fprintf(stderr, "Dielectric C %.7g, ", gpWIB->Wires[i].DielC);
 			if(gDebug) fprintf(stderr, "Thickness %.7g\n", gpWIB->Wires[i].Thk / gConvert.wdiam);
 			if(gDebug) fprintf(stderr, "Loss Tangent %.7g\n", gpWIB->Wires[i].LTan);
+		}
+	}
+
+	if(gpWLB) {
+		int i;
+
+		if(gDebug) fprintf(stderr, "\n");
+		if(gDebug) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		if(gDebug) fprintf(stderr, "@@ Have Wire Loss Block                                                     @@\n");
+		if(gDebug) fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+		if(gDebug) fprintf(stderr, "\n");
+
+		for(i = 0; i < gpWLB->NumWires; i++) {
+			if(gDebug) fprintf(stderr, "Resistivity %.7g, ", gpWLB->Wires[i].Rho);
+			if(gDebug) fprintf(stderr, "Permeability %.7g\n", gpWLB->Wires[i].Mu);
 		}
 	}
 
