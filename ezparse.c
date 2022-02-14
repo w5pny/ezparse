@@ -2153,11 +2153,11 @@ printLNetworks(FILE *pOut)
 	float percent2;
 
 	if(gPointers.pRec1->NLNet && pA) {
-		fprintf(stderr, "%d LNets\n", pA->NL);
+		if(gDebug) fprintf(stderr, "%d LNets\n", pA->NL);
 		for(i = 1; i <= pA->NL; i++) {
 			wireNo1 = pB[i].P1WNr;
 			wireNo2 = pB[i].P2WNr;
-			fprintf(stderr, "LNet %d uses wire-1 %d and wire-2 %d\n", i, wireNo1, wireNo2);
+			if(gDebug) fprintf(stderr, "LNet %d uses wire-1 %d and wire-2 %d\n", i, wireNo1, wireNo2);
 
 			if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
 				pWire1 = gPointers.ppRec2[wireNo1 - 1];
@@ -2180,13 +2180,13 @@ printLNetworks(FILE *pOut)
 			// The percentage is really an index into a table, rather than a
 			// 
 			if(wireNo1 == gVSegWire) {
-				fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
 				segNo1 = gVirtualSegs[virtualIndex(gVSegCount, percent1)];
 
 				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			} else {
-				fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
 				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			}
@@ -2195,13 +2195,13 @@ printLNetworks(FILE *pOut)
 			// The percentage is really an index into a table, rather than a
 			// 
 			if(wireNo2 == gVSegWire) {
-				fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
 				segNo2 = gVirtualSegs[virtualIndex(gVSegCount, percent2)];
 
 				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			} else {
-				fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
 				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			}
