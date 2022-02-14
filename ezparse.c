@@ -1244,12 +1244,16 @@ mapRecType1()
 	// Map the global header (RecType1 block).  It starts at byte 0.
 	MAP(gPointers.pRec1, RecType1, gIMap, 0);
 
-	if(gPointers.pRec1->MaxMWSL == 0) {
+	if(gPointers.pRec1->MaxMWSL < 32767) {
 		// OldMaxMWSL is 16 bit, and has been replaced by MaxMWSL
-		// which is 32 bit.  Older programs may not have filled
-		// MaxMWSL in, I suppose.
+		// which is 32 bit.  Often, OldMaxMWSL and MaxMWSL will
+		// be the same, assuming the file was produced by
+		// a recent version of EZNEC.  Older versions of
+		// EZNEC may put garbage in MaxMWSL.
 		//
-		// But I have no way to test that.
+		// If OldMaxMWSL is less than 32767, then use that.
+		// If OldMaxMWSL is equal to 32767, then use MaxMWSL, because
+		// 32767 is most likely a flag.
 		gPointers.pRec1->MaxMWSL = gPointers.pRec1->OldMaxMWSL;
 	}
 
