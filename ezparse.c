@@ -1244,7 +1244,7 @@ mapRecType1()
 	// Map the global header (RecType1 block).  It starts at byte 0.
 	MAP(gPointers.pRec1, RecType1, gIMap, 0);
 
-	if(gPointers.pRec1->MaxMWSL < 32767) {
+	if(gPointers.pRec1->OldMaxMWSL < 32767) {
 		// OldMaxMWSL is 16 bit, and has been replaced by MaxMWSL
 		// which is 32 bit.  Often, OldMaxMWSL and MaxMWSL will
 		// be the same, assuming the file was produced by
