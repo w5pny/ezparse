@@ -45,6 +45,7 @@
 #define VB_L_NETWORK		17
 #define VB_VIRTUAL_SEG		18
 #define VB_PLANE_WAVE_SRC	31
+#define VB_BLOCK101		101
 
 #define VSEG_MAX		1000
 
@@ -458,6 +459,23 @@ typedef struct {
 	uint32_t	VSegNr[1];	// Segment number
 } VirtSegmentBlock;
 
+// Block101
+//
+// WARNING: We must use the BlockLen rather than the sizeof(Block101)!
+typedef struct __attribute__((__packed__)) {
+        uint16_t Flag1;           // Unknown 
+        uint16_t Flag2;           // Unknown 
+	uint8_t	 PQ[8];	          // Unknown bytes
+        uint32_t ProgNameLen;     // Program Name Length
+        char     ProgName[1];	  // Program Name
+        uint16_t Unknown1;
+        uint16_t Unknown2;
+        uint16_t ProgVerLen;      // Program Version Length
+        char     ProgVer[1];	  // Program Version
+        uint8_t  Block101_1[10];  // Unknown
+        char     EngineName[1];    // Engine Name
+} Block101;
+
 typedef struct {
 	BlkHeader	*pH;
 	union {
@@ -468,6 +486,7 @@ typedef struct {
 		TransformerBlockPtrs	TB;	// Multiple component
 		LNetBlockPtrs		LNB;	// Multiple component
 		VirtSegmentBlock	*pVSB;	// Single component
+		Block101		*pB101;	// Multiple component
 	} u;
 } BLOCK;
 
@@ -502,6 +521,7 @@ TLineLossBlock		*gpTLLB;		// Single component
 TransformerBlockPtrs	gTB;			// Multiple component
 LNetBlockPtrs		gLNB;			// Multiple component
 VirtSegmentBlock	*gpVSB;			// Single component
+Block101		*gpB101;		// Single component
 uint32_t		gVirtualSegs[VSEG_MAX];	// Virtual segments
 uint32_t		gVSegCount;		// Number of virtual segments
 uint32_t		gVSegWire;		// Tag for all virtual wires
@@ -1126,6 +1146,59 @@ dumpVirtSegmentBlock(BlkHeader *pH, VirtSegmentBlock *p)
 	fprintf(stderr, "\n");
 }
 
+void
+dumpBlock101(BlkHeader *pH, Block101 *p)
+{
+	int i;
+ 
+        char *pStr;
+
+	if(!gDebug) {
+		return;
+	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ Dump Block101                                                            @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+
+
+        fprintf(stderr, "Flag1 = 0x%04x\n", p->Flag1);
+        fprintf(stderr, "Flag2 = 0x%04x\n", p->Flag2);
+
+	fprintf(stderr, "PQ[8] =");
+	for (i = 0; i < 8; i++) {
+		fprintf(stderr, " 0x%02x", p->PQ[i]);
+	}
+        fprintf(stderr, "\n\n");
+
+fprintf(stderr, "ProgNameLen = %d ProgVerLen = 0x%x\n",
+            p->ProgNameLen, p->ProgVerLen);
+
+        pStr = p->ProgName;
+        fprintf(stderr, "Eznec Program Name: ");
+	for (i = 0; i < p->ProgNameLen; i++) {
+		fprintf(stderr, "%c", *pStr++);
+	}
+fprintf(stderr, "\n");
+#if 0
+	fprintf(stderr, "Eznec Program Version: ");
+	for (i = 0; i < 5; i++) {
+		fprintf(stderr, "%c", p->ProgVer[i]);
+	}
+	fprintf(stderr, "Nec Engine Name: ");
+	for(i = 0; i < p->EngineNameLen; i++) {
+		fprintf(stderr, "%c", p->EngineName[i]);
+	}
+#endif 
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ End Dump                                                                 @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+}
+
 // Convert "percent along a wire" to a segment number.
 int
 virtualIndex(int segments, double percent)
@@ -1345,6 +1418,7 @@ mapVarBlocks()
 	int foundTX = 0;
 	int foundLN = 0;
 	int foundVS = 0;
+	int foundBL101 = 0;
 
 	// There is always a single gPointers.pRec1 - that's the first
 	// PRIMARY_BS in the varStart variable.
@@ -1556,6 +1630,18 @@ mapVarBlocks()
 				VMAP(pB->u.pVSB, VirtSegmentBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
 				gpVSB = pB->u.pVSB;
 				dumpVirtSegmentBlock(pH, gpVSB);
+				break;
+
+			case VB_BLOCK101:
+				if(foundBL101) {
+					fprintf(stderr, "Duplicate VB_BLOCK101 - replacing!\n");
+				}
+				++foundBL101;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pB101, Block101, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				gpB101 = pB->u.pB101;
+				dumpBlock101(pH, gpB101);
 				break;
 
 			case VB_Y_PARAM:
