@@ -265,7 +265,7 @@ typedef struct __attribute__((__packed__)) {
 // NB - there are probably additional BlockType's that we don't know
 // about.
 typedef struct __attribute__((__packed__)) {
-	uint16_t	BlockType;	// Block type 11, 12, 14, 15, 17, 18, 31, 101
+	uint16_t	BlockType;	// Block type 11, 12, 13, 14, 15, 17, 18, 31, 101, 102
 	uint32_t	BlockLen;	// Length, includes this header
 	uint8_t		BlockRev;	// Block format revision
 } BlkHeader;
