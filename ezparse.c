@@ -1930,12 +1930,12 @@ printGrounds(FILE *pOut)
 	switch(gPointers.pRec1->Gtype) {
 		case 'F':
 			// F = free space
-			fprintf(pOut, "GN %5d\n", -1);
+			fprintf(pOut, "GN %d\n", -1);
 			break;
 
 		case 'P':
 			// P = perfect
-			fprintf(pOut, "GN %5d\n", 1);
+			fprintf(pOut, "GN %d\n", 1);
 			break;
 
 		case 'R':
