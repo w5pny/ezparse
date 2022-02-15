@@ -266,7 +266,7 @@ typedef struct __attribute__((__packed__)) {
 // NB - there are probably additional BlockType's that we don't know
 // about.
 typedef struct __attribute__((__packed__)) {
-	uint16_t	BlockType;	// Block type 11, 12, 14, 15, 17, 18, 31, 101
+	uint16_t	BlockType;	// Block type 11, 12, 13, 14, 15, 17, 18, 31, 101, 102
 	uint32_t	BlockLen;	// Length, includes this header
 	uint8_t		BlockRev;	// Block format revision
 } BlkHeader;
@@ -656,12 +656,12 @@ dumpRecType1(RecType1 *p)
 	fprintf(stderr, "RecType1: PEnd = %.7g\n",	(double)p->PEnd);
 	fprintf(stderr, "RecType1: OldLType = %d\n",	p->OldLType);
 	fprintf(stderr, "RecType1: GWDist = %.7g\n",	(double)p->GWDist);
-	fprintf(stderr, "RecType1: GWZ = %.7g\n",		(double)p->GWZ);
+	fprintf(stderr, "RecType1: GWZ = %.7g\n",	(double)p->GWZ);
 	fprintf(stderr, "RecType1: LNetType = %d\n",	p->LNetType);
 	fprintf(stderr, "RecType1: AnalRes = %.7g\n",	(double)p->AnalRes);
 	fprintf(stderr, "RecType1: RefdB = %.7g\n",	(double)p->RefdB);
 	fprintf(stderr, "RecType1: WRho = %.7g\n",	(double)p->WRho);
-	fprintf(stderr, "RecType1: WMu = %.7g\n",		(double)p->WMu);
+	fprintf(stderr, "RecType1: WMu = %.7g\n",	(double)p->WMu);
 	fprintf(stderr, "RecType1: NP = %d\n",		p->NP);
 	fprintf(stderr, "RecType1: ArrayFiles = %d\n",	p->ArrayFiles);
 	fprintf(stderr, "RecType1: SWRZ0 = %.7g\n",	(double)p->SWRZ0);
@@ -678,7 +678,7 @@ dumpRecType1(RecType1 *p)
 	fprintf(stderr, "RecType1: PStep3D = %.7g\n",	(double)p->PStep3D);
 	fprintf(stderr, "RecType1: MiscFlags = %d\n",	p->MiscFlags);
 	fprintf(stderr, "RecType1: PgmVerCode = %d\n",	p->PgmVerCode);
-	fprintf(stderr, "RecType1: LinRange2D = %.7g\n",	(double)p->LinRange2D);
+	fprintf(stderr, "RecType1: LinRange2D = %.7g\n",(double)p->LinRange2D);
 	fprintf(stderr, "RecType1: NX = %d\n",		p->NX);
 	fprintf(stderr, "RecType1: NN = %d\n",		p->NN);
 	fprintf(stderr, "RecType1: NLNet = %d\n",	p->NLNet);
@@ -710,7 +710,7 @@ dumpRecType2(int idx, RecType2 *p)
 	fprintf(stderr, "RecType2: MSigma = %.7g\n",	(double)p->MSigma);
 	fprintf(stderr, "RecType2: MEps = %.7g\n",	(double)p->MEps);
 	fprintf(stderr, "RecType2: MCoord = %.7g\n",	(double)p->MCoord);
-	fprintf(stderr, "RecType2: MHt = %.7g\n",		(double)p->MHt);
+	fprintf(stderr, "RecType2: MHt = %.7g\n",	(double)p->MHt);
 	fprintf(stderr, "RecType2: WEnd1_X = %.7g\n",	(double)p->WEnd1_X);
 	fprintf(stderr, "RecType2: WEnd1_Y = %.7g\n",	(double)p->WEnd1_Y);
 	fprintf(stderr, "RecType2: WEnd1_Z = %.7g\n",	(double)p->WEnd1_Z);
@@ -753,7 +753,7 @@ dumpRecType2(int idx, RecType2 *p)
 	fprintf(stderr, "RecType2: sngR = %.7g\n",	(double)p->sngR);
 	fprintf(stderr, "RecType2: sngL = %.7g\n",	(double)p->sngL);
 	fprintf(stderr, "RecType2: sngC = %.7g\n",	(double)p->sngC);
-	fprintf(stderr, "RecType2: sngRFreqMHz = %.7g\n",	(double)p->sngRFreqMHz);
+	fprintf(stderr, "RecType2: sngRFreqMHz = %.7g\n",(double)p->sngRFreqMHz);
 	//fprintf(stderr, "RecType2: Reserved[3] = %.7g\n", (double)p->Reserved[3]);
 
 	fprintf(stderr, "\n");
@@ -846,7 +846,7 @@ dumpFreqSweepBlock(BlkHeader *pH, FreqSweepBlk *p)
 	fprintf(stderr, "FreqSweepBlk: DFLen = %d\n",	p->DFLen);
 	fprintf(stderr, "FreqSweepBlk: AFLen = %d\n",	p->AFLen);
 	fprintf(stderr, "FreqSweepBlk: Flags = %d\n",	p->Flags);
-	fprintf(stderr, "FreqSweepBlk: FStart = %.7g\n",	(double)p->FStart);
+	fprintf(stderr, "FreqSweepBlk: FStart = %.7g\n",(double)p->FStart);
 	fprintf(stderr, "FreqSweepBlk: FStop = %.7g\n",	(double)p->FStop);
 	fprintf(stderr, "FreqSweepBlk: FStep = %.7g\n",	(double)p->FStep);
 
@@ -1317,21 +1317,29 @@ mapRecType1()
 	// Map the global header (RecType1 block).  It starts at byte 0.
 	MAP(gPointers.pRec1, RecType1, gIMap, 0);
 
-	if(gPointers.pRec1->MaxMWSL == 0) {
+	if(gPointers.pRec1->OldMaxMWSL < 32767) {
 		// OldMaxMWSL is 16 bit, and has been replaced by MaxMWSL
-		// which is 32 bit.  Older programs may not have filled
-		// MaxMWSL in, I suppose.
+		// which is 32 bit.  Often, OldMaxMWSL and MaxMWSL will
+		// be the same, assuming the file was produced by
+		// a recent version of EZNEC.  Older versions of
+		// EZNEC may put garbage in MaxMWSL.
 		//
-		// But I have no way to test that.
+		// If OldMaxMWSL is less than 32767, then use that.
+		// If OldMaxMWSL is equal to 32767, then use MaxMWSL, because
+		// 32767 is most likely a flag.
 		gPointers.pRec1->MaxMWSL = gPointers.pRec1->OldMaxMWSL;
 	}
 
-	if(gPointers.pRec1->NW == 0) {
+	if(gPointers.pRec1->OldNW < 32767) {
 		// OldNW is 16 bit, and has been replaced by NW
-		// which is 32 bit.  Older programs may not have filled
-		// NW in, I suppose.
+		// which is 32 bit.  Often, OldNW and NW will
+		// be the same, assuming the file was produced by
+		// a recent version of EZNEC.  Older versions of
+		// EZNEC may put garbage in NW.
 		//
-		// But I have no way to test that.
+		// If OldNW is less than 32767, then use that.
+		// If OldNW is equal to 32767, then use NW, because
+		// 32767 is most likely a flag.
 		gPointers.pRec1->NW = gPointers.pRec1->OldNW;
 	}
 
@@ -1949,7 +1957,7 @@ printLoads(FILE *pOut)
 
 		segNo = virtualIndex(pWire->WSegs, pLoad->LWPct);
 
-		if (gNecVersion == 5 && pWire->SWPct < 50) {
+		if(gNecVersion == 5 && pWire->SWPct < 50) {
 			segNo = -segNo;
 		}
 
@@ -1974,11 +1982,18 @@ printLoads(FILE *pOut)
 		}
 	}
 
-#if 0
-	// Synthesize loads based on wire conductivity.
-	if(gPointers.pRec1->WRho != 0 || gPointers.pRec1->WMu != 1) {
-		for(i = 0; i < gPointers.pRec1->NW; i++) {
+#if 1
+	if(gpWLB) {
+		// Block 13 is present, so we have LD information per wire.
+		for(i = 0; i < gpWLB->NumWires; i++) {
 			fprintf(pOut, "LD %d,%d,%d,%d,", 5, i + 1, 0, 0);
+			fprintf(pOut, "%.7g,%.7g\n", 1.0 / gpWLB->Wires[i].Rho, gpWLB->Wires[i].Mu);
+		}
+	} else {
+		// Block 13 is not present.  Use the global information on a single LD card,
+		// assuming it looks reasonable.  If WRho is zero, then skip this card.
+		if(gPointers.pRec1->WRho != 0.0) {
+			fprintf(pOut, "LD %d,%d,%d,%d,", 5, 0, 0, 0);
 			fprintf(pOut, "%.7g,%.7g\n", 1.0 / gPointers.pRec1->WRho, gPointers.pRec1->WMu);
 		}
 	}
@@ -2001,12 +2016,12 @@ printGrounds(FILE *pOut)
 	switch(gPointers.pRec1->Gtype) {
 		case 'F':
 			// F = free space
-			fprintf(pOut, "GN %5d\n", -1);
+			fprintf(pOut, "GN %d\n", -1);
 			break;
 
 		case 'P':
 			// P = perfect
-			fprintf(pOut, "GN %5d\n", 1);
+			fprintf(pOut, "GN %d\n", 1);
 			break;
 
 		case 'R':
@@ -2224,11 +2239,11 @@ printLNetworks(FILE *pOut)
 	float percent2;
 
 	if(gPointers.pRec1->NLNet && pA) {
-		fprintf(stderr, "%d LNets\n", pA->NL);
+		if(gDebug) fprintf(stderr, "%d LNets\n", pA->NL);
 		for(i = 1; i <= pA->NL; i++) {
 			wireNo1 = pB[i].P1WNr;
 			wireNo2 = pB[i].P2WNr;
-			fprintf(stderr, "LNet %d uses wire-1 %d and wire-2 %d\n", i, wireNo1, wireNo2);
+			if(gDebug) fprintf(stderr, "LNet %d uses wire-1 %d and wire-2 %d\n", i, wireNo1, wireNo2);
 
 			if((wireNo1 > 0) && (wireNo1 <= gPointers.pRec1->NW)) {
 				pWire1 = gPointers.ppRec2[wireNo1 - 1];
@@ -2251,13 +2266,13 @@ printLNetworks(FILE *pOut)
 			// The percentage is really an index into a table, rather than a
 			// 
 			if(wireNo1 == gVSegWire) {
-				fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-1 %d matches vseg %d\n", i, wireNo1, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
 				segNo1 = gVirtualSegs[virtualIndex(gVSegCount, percent1)];
 
 				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			} else {
-				fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-1 %d doesn't match vseg %d\n", i, wireNo1, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
 				segNo1 = virtualIndex(pWire1[i].WSegs, percent1);
 			}
@@ -2266,13 +2281,13 @@ printLNetworks(FILE *pOut)
 			// The percentage is really an index into a table, rather than a
 			// 
 			if(wireNo2 == gVSegWire) {
-				fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-2 %d matches vseg %d\n", i, wireNo2, gVSegWire);
 				// Virtual wire.  Find virtual segment number.
 				segNo2 = gVirtualSegs[virtualIndex(gVSegCount, percent2)];
 
 				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			} else {
-				fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
+				if(gDebug) fprintf(stderr, "LNet %d wire-2 %d doesn't match vseg %d\n", i, wireNo2, gVSegWire);
 				// Real wire.  Find segment along wire from the percentage.
 				segNo2 = virtualIndex(pWire2[i].WSegs, percent2);
 			}
@@ -2438,8 +2453,8 @@ process(
 		if(gDebug) fprintf(stderr, "\n");
 
 		for(i = 0; i < gpWIB->NumWires; i++) {
-			if(gDebug) fprintf(stderr, "Dielectric C %.7g, ", gpWIB->Wires[i].DielC);
-			if(gDebug) fprintf(stderr, "Thickness %.7g\n", gpWIB->Wires[i].Thk / gConvert.wdiam);
+			if(gDebug) fprintf(stderr, "Wire %d: Dielectric C %.7g, ", i + 1, gpWIB->Wires[i].DielC);
+			if(gDebug) fprintf(stderr, "Thickness %.7g, ", gpWIB->Wires[i].Thk / gConvert.wdiam);
 			if(gDebug) fprintf(stderr, "Loss Tangent %.7g\n", gpWIB->Wires[i].LTan);
 		}
 	}
@@ -2454,7 +2469,7 @@ process(
 		if(gDebug) fprintf(stderr, "\n");
 
 		for(i = 0; i < gpWLB->NumWires; i++) {
-			if(gDebug) fprintf(stderr, "Resistivity %.7g, ", gpWLB->Wires[i].Rho);
+			if(gDebug) fprintf(stderr, "Wire %d: Resistivity %.7g, ", i + 1, gpWLB->Wires[i].Rho);
 			if(gDebug) fprintf(stderr, "Permeability %.7g\n", gpWLB->Wires[i].Mu);
 		}
 	}
