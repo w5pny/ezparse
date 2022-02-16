@@ -469,12 +469,10 @@ typedef struct __attribute__((__packed__)) {
 	uint8_t	 PQ[8];	          // Unknown bytes
         uint32_t ProgNameLen;     // Program Name Length
         char     ProgName[1];	  // Program Name
-        uint16_t Unknown1;
-        uint16_t Unknown2;
-        uint16_t ProgVerLen;      // Program Version Length
+        uint8_t  Block101_1[15];  // The length of this depends on ProgNameLen and what else?
         char     ProgVer[1];	  // Program Version
-        uint8_t  Block101_1[10];  // Unknown
-        char     EngineName[1];    // Engine Name
+        uint8_t  Block101_2[10];  // Unknown
+        char     EngineName[1];   // Engine Name
 } Block101;
 
 // Block102
@@ -1192,7 +1190,7 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	}
         fprintf(stderr, "\n\n");
 
-	fprintf(stderr, "ProgNameLen = %d ProgVerLen = 0x%x\n", p->ProgNameLen, p->ProgVerLen);
+	fprintf(stderr, "ProgNameLen = %d\n", p->ProgNameLen);
 
         pStr = p->ProgName;
         fprintf(stderr, "Eznec Program Name: ");
@@ -1201,7 +1199,7 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	}
 	fprintf(stderr, "\n");
 
-	strncpy(u.bytes, pStr, sizeof(u));
+	memcpy(u.bytes, pStr, sizeof(u));
 	pStr += sizeof(u);
         fprintf(stderr, "Eznec Program Version: ");
 	for (i = 0; i < u.value; i++) {
@@ -1212,7 +1210,7 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	// Skip 4 unknown bytes.
 	pStr += 4;
 	
-	strncpy(u.bytes, pStr, sizeof(u));
+	memcpy(u.bytes, pStr, sizeof(u));
 	pStr += sizeof(u);
 	for (i = 0; i < u.value; i++) {
 		if(*pStr == '\r') {
@@ -1275,7 +1273,7 @@ dumpBlock102(BlkHeader *pH, Block102 *p)
 	}
 	fprintf(stderr, "\n");
 
-	strncpy(u.bytes, pStr, sizeof(u));
+	memcpy(u.bytes, pStr, sizeof(u));
 	pStr += sizeof(u);
         fprintf(stderr, "Engine Path: ");
 	for (i = 0; i < u.value; i++) {
