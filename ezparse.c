@@ -45,6 +45,8 @@
 #define VB_L_NETWORK		17
 #define VB_VIRTUAL_SEG		18
 #define VB_PLANE_WAVE_SRC	31
+#define VB_BLOCK101		101
+#define VB_BLOCK102		102
 
 #define VSEG_MAX		1000
 
@@ -92,6 +94,18 @@
 	} while(0)
 
 int	gDebug = 0;
+
+// For converting an unaligned uint32_t.
+typedef union {
+	char bytes[4];
+	uint32_t value;
+} GET_UINT32;
+
+// For converting an unaligned uint64_t.
+typedef union {
+	char bytes[8];
+	uint64_t value;
+} GET_UINT64;
 
 // NB: We only declare structs to be packed if they really need it.
 // Otherwise, the compiler would give us "unaligned pointer" warnings
@@ -458,6 +472,31 @@ typedef struct {
 	uint32_t	VSegNr[1];	// Segment number
 } VirtSegmentBlock;
 
+// Block101
+//
+// WARNING: We must use the BlockLen rather than the sizeof(Block101)!
+typedef struct __attribute__((__packed__)) {
+        uint32_t Flag1;           // Unknown - I've only seen 0x1 or 0x2 here
+	uint8_t	 TimeStamp[8];    // I think this is a timestamp in 0.6 us units???
+        uint32_t ProgNameLen;     // Program Name Length
+        char     ProgName[1];	  // Program Name
+	// There is more in this block, but because the string lengths are
+	// interspersed with the strings, we have to parse it rather than
+	// assign a structure to it.
+} Block101;
+
+// Block102
+//
+// WARNING: We must use the BlockLen rather than the sizeof(Block102)!
+typedef struct __attribute__((__packed__)) {
+        uint32_t EngineType;	// Engine type 
+        uint32_t FirstLen;	// Length of Engine name string
+	char	 EngineName[1];	// Engine name
+	// There is more in this block, but because the string lengths are
+	// interspersed with the strings, we have to parse it rather than
+	// assign a structure to it.
+} Block102;
+
 typedef struct {
 	BlkHeader	*pH;
 	union {
@@ -468,6 +507,8 @@ typedef struct {
 		TransformerBlockPtrs	TB;	// Multiple component
 		LNetBlockPtrs		LNB;	// Multiple component
 		VirtSegmentBlock	*pVSB;	// Single component
+		Block101		*pB101;	// Multiple component
+		Block102		*pB102;	// Multiple component
 	} u;
 } BLOCK;
 
@@ -502,6 +543,8 @@ TLineLossBlock		*gpTLLB;		// Single component
 TransformerBlockPtrs	gTB;			// Multiple component
 LNetBlockPtrs		gLNB;			// Multiple component
 VirtSegmentBlock	*gpVSB;			// Single component
+Block101		*gpB101;		// Single component
+Block102		*gpB102;		// Single component
 uint32_t		gVirtualSegs[VSEG_MAX];	// Virtual segments
 uint32_t		gVSegCount;		// Number of virtual segments
 uint32_t		gVSegWire;		// Tag for all virtual wires
@@ -1126,6 +1169,128 @@ dumpVirtSegmentBlock(BlkHeader *pH, VirtSegmentBlock *p)
 	fprintf(stderr, "\n");
 }
 
+void
+dumpBlock101(BlkHeader *pH, Block101 *p)
+{
+	int i;
+ 
+        char *pStr;
+
+	GET_UINT32 u32;
+	GET_UINT64 u64;
+
+	if(!gDebug) {
+		return;
+	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ Dump Block101                                                            @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+
+
+        fprintf(stderr, "Flag1 = 0x%08x\n", p->Flag1);
+
+	memcpy(u64.bytes, &p->TimeStamp[0], sizeof(u64));
+	fprintf(stderr, "Timestamp = 0x%16lx\n", u64.value);
+
+	fprintf(stderr, "ProgNameLen = %d\n", p->ProgNameLen);
+
+        pStr = p->ProgName;
+        fprintf(stderr, "Eznec Program Name: ");
+	for (i = 0; i < p->ProgNameLen; i++) {
+		fprintf(stderr, "%c", *pStr++);
+	}
+	fprintf(stderr, "\n");
+
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+        fprintf(stderr, "Eznec Program Version: ");
+	for (i = 0; i < u32.value; i++) {
+		fprintf(stderr, "%c", *pStr++);
+	}
+	fprintf(stderr, "\n");
+
+	// 4 unknown bytes, call them a flag.
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+        fprintf(stderr, "Flag2 = 0x%08x\n", u32.value);
+	
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+	for (i = 0; i < u32.value; i++) {
+		if(*pStr == '\r') {
+			// suppress CR
+			pStr++;
+		} else {
+			fprintf(stderr, "%c", *pStr++);
+		}
+	}
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ End Dump                                                                 @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+}
+
+void
+dumpBlock102(BlkHeader *pH, Block102 *p)
+{
+	int i;
+ 
+        char *pStr;
+
+	GET_UINT32 u32;
+
+	if(!gDebug) {
+		return;
+	}
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ Dump Block102                                                            @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+
+	// Flag1 appears to be the engine type, but I only know 3 examples.
+	switch(p->EngineType) {
+		case 2:		fprintf(stderr, "Engine type 2 (Internal NEC-2)\n");		break;
+		case 4:		fprintf(stderr, "Engine type 4 (Internal NEC-4)\n");		break;
+		case 6:		fprintf(stderr, "Engine type 6 (External NEC-4)\n");		break;
+		case 8:		fprintf(stderr, "Engine type 8 (External NEC-5)\n");		break;
+		default:	fprintf(stderr, "Engine type 0x%08x - unknown\n", p->EngineType); break;
+	}
+
+        pStr = p->EngineName;
+        fprintf(stderr, "Engine: ");
+	for (i = 0; i < p->FirstLen; i++) {
+		fprintf(stderr, "%c", *pStr++);
+	}
+	fprintf(stderr, "\n");
+
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+        fprintf(stderr, "Engine Path: ");
+	for (i = 0; i < u32.value; i++) {
+		if(*pStr == '\r') {
+			// suppress CR
+			pStr++;
+		} else {
+			fprintf(stderr, "%c", *pStr++);
+		}
+	}
+	fprintf(stderr, "\n");
+
+	fprintf(stderr, "\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "@@ End Dump                                                                 @@\n");
+	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
+	fprintf(stderr, "\n");
+}
+
 // Convert "percent along a wire" to a segment number.
 int
 virtualIndex(int segments, double percent)
@@ -1353,6 +1518,8 @@ mapVarBlocks()
 	int foundTX = 0;
 	int foundLN = 0;
 	int foundVS = 0;
+	int foundBL101 = 0;
+	int foundBL102 = 0;
 
 	// There is always a single gPointers.pRec1 - that's the first
 	// PRIMARY_BS in the varStart variable.
@@ -1564,6 +1731,30 @@ mapVarBlocks()
 				VMAP(pB->u.pVSB, VirtSegmentBlock, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
 				gpVSB = pB->u.pVSB;
 				dumpVirtSegmentBlock(pH, gpVSB);
+				break;
+
+			case VB_BLOCK101:
+				if(foundBL101) {
+					fprintf(stderr, "Duplicate VB_BLOCK101 - replacing!\n");
+				}
+				++foundBL101;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pB101, Block101, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				gpB101 = pB->u.pB101;
+				dumpBlock101(pH, gpB101);
+				break;
+
+			case VB_BLOCK102:
+				if(foundBL102) {
+					fprintf(stderr, "Duplicate VB_BLOCK102 - replacing!\n");
+				}
+				++foundBL102;
+
+				// Variable length - map the whole block.
+				VMAP(pB->u.pB102, Block102, gIMap, start, pH->BlockLen - sizeof(BlkHeader));
+				gpB102 = pB->u.pB102;
+				dumpBlock102(pH, gpB102);
 				break;
 
 			case VB_Y_PARAM:
