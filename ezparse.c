@@ -95,6 +95,18 @@
 
 int	gDebug = 0;
 
+// For converting an unaligned uint32_t.
+typedef union {
+	char bytes[4];
+	uint32_t value;
+} GET_UINT32;
+
+// For converting an unaligned uint64_t.
+typedef union {
+	char bytes[8];
+	uint64_t value;
+} GET_UINT64;
+
 // NB: We only declare structs to be packed if they really need it.
 // Otherwise, the compiler would give us "unaligned pointer" warnings
 // in some cases.
@@ -464,24 +476,25 @@ typedef struct {
 //
 // WARNING: We must use the BlockLen rather than the sizeof(Block101)!
 typedef struct __attribute__((__packed__)) {
-        uint16_t Flag1;           // Unknown 
-        uint16_t Flag2;           // Unknown 
-	uint8_t	 PQ[8];	          // Unknown bytes
+        uint32_t Flag1;           // Unknown - I've only seen 0x1 or 0x2 here
+	uint8_t	 TimeStamp[8];    // I think this is a timestamp in 0.6 us units???
         uint32_t ProgNameLen;     // Program Name Length
         char     ProgName[1];	  // Program Name
-        uint8_t  Block101_1[15];  // The length of this depends on ProgNameLen and what else?
-        char     ProgVer[1];	  // Program Version
-        uint8_t  Block101_2[10];  // Unknown
-        char     EngineName[1];   // Engine Name
+	// There is more in this block, but because the string lengths are
+	// interspersed with the strings, we have to parse it rather than
+	// assign a structure to it.
 } Block101;
 
 // Block102
 //
 // WARNING: We must use the BlockLen rather than the sizeof(Block102)!
 typedef struct __attribute__((__packed__)) {
-        uint32_t Flag1;         // Unknown 
-        uint32_t FirstLen;      // Length of first string
-	char	 Engine[1];	// Engine name
+        uint32_t EngineType;	// Engine type 
+        uint32_t FirstLen;	// Length of Engine name string
+	char	 EngineName[1];	// Engine name
+	// There is more in this block, but because the string lengths are
+	// interspersed with the strings, we have to parse it rather than
+	// assign a structure to it.
 } Block102;
 
 typedef struct {
@@ -1156,11 +1169,6 @@ dumpVirtSegmentBlock(BlkHeader *pH, VirtSegmentBlock *p)
 	fprintf(stderr, "\n");
 }
 
-typedef union {
-	char bytes[4];
-	uint32_t value;
-} GET_UINT32;
-
 void
 dumpBlock101(BlkHeader *pH, Block101 *p)
 {
@@ -1168,7 +1176,8 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
  
         char *pStr;
 
-	GET_UINT32 u;
+	GET_UINT32 u32;
+	GET_UINT64 u64;
 
 	if(!gDebug) {
 		return;
@@ -1181,14 +1190,10 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	fprintf(stderr, "\n");
 
 
-        fprintf(stderr, "Flag1 = 0x%04x\n", p->Flag1);
-        fprintf(stderr, "Flag2 = 0x%04x\n", p->Flag2);
+        fprintf(stderr, "Flag1 = 0x%08x\n", p->Flag1);
 
-	fprintf(stderr, "PQ[8] =");
-	for (i = 0; i < 8; i++) {
-		fprintf(stderr, " 0x%02x", p->PQ[i]);
-	}
-        fprintf(stderr, "\n\n");
+	memcpy(u64.bytes, &p->TimeStamp[0], sizeof(u64));
+	fprintf(stderr, "Timestamp = 0x%16lx\n", u64.value);
 
 	fprintf(stderr, "ProgNameLen = %d\n", p->ProgNameLen);
 
@@ -1199,20 +1204,22 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	}
 	fprintf(stderr, "\n");
 
-	memcpy(u.bytes, pStr, sizeof(u));
-	pStr += sizeof(u);
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
         fprintf(stderr, "Eznec Program Version: ");
-	for (i = 0; i < u.value; i++) {
+	for (i = 0; i < u32.value; i++) {
 		fprintf(stderr, "%c", *pStr++);
 	}
 	fprintf(stderr, "\n");
 
-	// Skip 4 unknown bytes.
-	pStr += 4;
+	// 4 unknown bytes, call them a flag.
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+        fprintf(stderr, "Flag2 = 0x%08x\n", u32.value);
 	
-	memcpy(u.bytes, pStr, sizeof(u));
-	pStr += sizeof(u);
-	for (i = 0; i < u.value; i++) {
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
+	for (i = 0; i < u32.value; i++) {
 		if(*pStr == '\r') {
 			// suppress CR
 			pStr++;
@@ -1222,16 +1229,6 @@ dumpBlock101(BlkHeader *pH, Block101 *p)
 	}
 	fprintf(stderr, "\n");
 
-#if 0
-	fprintf(stderr, "Eznec Program Version: ");
-	for (i = 0; i < 5; i++) {
-		fprintf(stderr, "%c", p->ProgVer[i]);
-	}
-	fprintf(stderr, "Nec Engine Name: ");
-	for(i = 0; i < p->EngineNameLen; i++) {
-		fprintf(stderr, "%c", p->EngineName[i]);
-	}
-#endif 
 	fprintf(stderr, "\n");
 	fprintf(stderr, "@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@\n");
 	fprintf(stderr, "@@ End Dump                                                                 @@\n");
@@ -1246,7 +1243,7 @@ dumpBlock102(BlkHeader *pH, Block102 *p)
  
         char *pStr;
 
-	GET_UINT32 u;
+	GET_UINT32 u32;
 
 	if(!gDebug) {
 		return;
@@ -1259,24 +1256,25 @@ dumpBlock102(BlkHeader *pH, Block102 *p)
 	fprintf(stderr, "\n");
 
 	// Flag1 appears to be the engine type, but I only know 3 examples.
-	switch(p->Flag1) {
+	switch(p->EngineType) {
 		case 2:		fprintf(stderr, "Engine type 2 (Internal NEC-2)\n");		break;
+		case 4:		fprintf(stderr, "Engine type 4 (Internal NEC-4)\n");		break;
 		case 6:		fprintf(stderr, "Engine type 6 (External NEC-4)\n");		break;
 		case 8:		fprintf(stderr, "Engine type 8 (External NEC-5)\n");		break;
-		default:	fprintf(stderr, "Engine type 0x%08x - unknown\n", p->Flag1);	break;
+		default:	fprintf(stderr, "Engine type 0x%08x - unknown\n", p->EngineType); break;
 	}
 
-        pStr = p->Engine;
+        pStr = p->EngineName;
         fprintf(stderr, "Engine: ");
 	for (i = 0; i < p->FirstLen; i++) {
 		fprintf(stderr, "%c", *pStr++);
 	}
 	fprintf(stderr, "\n");
 
-	memcpy(u.bytes, pStr, sizeof(u));
-	pStr += sizeof(u);
+	memcpy(u32.bytes, pStr, sizeof(u32));
+	pStr += sizeof(u32);
         fprintf(stderr, "Engine Path: ");
-	for (i = 0; i < u.value; i++) {
+	for (i = 0; i < u32.value; i++) {
 		if(*pStr == '\r') {
 			// suppress CR
 			pStr++;
